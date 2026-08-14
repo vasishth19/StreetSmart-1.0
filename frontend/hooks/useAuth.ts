@@ -1,7 +1,6 @@
-// ─── hooks/useAuth.ts ─────────────────────────────────────────────
-// JWT authentication hook
+'use client';
 
-import { useState, useEffect, useCallback, createContext, useContext } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 
 export interface User {
   id:    number;
@@ -9,35 +8,60 @@ export interface User {
   email: string;
 }
 
-interface AuthState {
-  user:    User | null;
-  token:   string | null;
-  loading: boolean;
-}
-
-interface AuthActions {
-  login:   (email: string, password: string) => Promise<void>;
-  signup:  (name: string, email: string, password: string) => Promise<void>;
-  logout:  () => void;
-}
-
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-// Token helpers (memory-only, no localStorage)
 let _token: string | null = null;
-let _user:  User  | null  = null;
+let _user:  User   | null = null;
 
 export function getToken() { return _token; }
 export function getUser()  { return _user;  }
 
-export function useAuth(): AuthState & AuthActions {
-  const [user,    setUser]    = useState<User | null>(_user);
-  const [token,   setToken]   = useState<string | null>(_token);
+export function useAuth() {
+  const [user,    setUser]    = useState<User | null>(null);
+  const [token,   setToken]   = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // ✅ Load from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedToken = localStorage.getItem('ss_token');
+      const savedUser  = localStorage.getItem('ss_user');
+      if (savedToken && savedUser) {
+        _token = savedToken;
+        _user  = JSON.parse(savedUser);
+        setToken(savedToken);
+        setUser(_user);
+      }
+    } catch {}
+  }, []);
 
   const login = useCallback(async (email: string, password: string) => {
     setLoading(true);
     try {
+      // Demo mode
+      if (email === 'demo@streetsmart.city' && password === 'demo123') {
+        const demoUser = { id: 1, name: 'Demo User', email };
+        _token = 'demo-token-xxx';
+        _user  = demoUser;
+        setToken(_token);
+        setUser(demoUser);
+        localStorage.setItem('ss_token', _token);
+        localStorage.setItem('ss_user',  JSON.stringify(demoUser));
+        return;
+      }
+
+      // Admin mode
+      if (email === 'admin@streetsmart.app' && password === 'admin2026') {
+        const adminUser = { id: 0, name: 'Admin', email };
+        _token = 'admin-token-xxx';
+        _user  = adminUser;
+        setToken(_token);
+        setUser(adminUser);
+        localStorage.setItem('ss_token', _token);
+        localStorage.setItem('ss_user',  JSON.stringify(adminUser));
+        return;
+      }
+
       const res = await fetch(`${API}/auth/login`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -45,15 +69,6 @@ export function useAuth(): AuthState & AuthActions {
       });
 
       if (!res.ok) {
-        // Demo mode: accept demo@streetsmart.city / demo123
-        if (email === 'demo@streetsmart.city' && password === 'demo123') {
-          const demoUser = { id: 1, name: 'Demo User', email };
-          _token = 'demo-token-xxx';
-          _user  = demoUser;
-          setToken(_token);
-          setUser(demoUser);
-          return;
-        }
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail ?? 'Invalid credentials');
       }
@@ -61,7 +76,6 @@ export function useAuth(): AuthState & AuthActions {
       const data = await res.json();
       _token = data.access_token;
 
-      // Fetch user profile
       const profileRes = await fetch(`${API}/auth/me`, {
         headers: { Authorization: `Bearer ${_token}` },
       });
@@ -69,6 +83,11 @@ export function useAuth(): AuthState & AuthActions {
       _user = profile;
       setToken(_token);
       setUser(profile);
+
+      // ✅ Save to localStorage — survives refresh
+      localStorage.setItem('ss_token', _token!);
+      localStorage.setItem('ss_user',  JSON.stringify(profile));
+
     } finally {
       setLoading(false);
     }
@@ -88,7 +107,6 @@ export function useAuth(): AuthState & AuthActions {
         throw new Error(err.detail ?? 'Signup failed');
       }
 
-      // Auto-login after signup
       await login(email, password);
     } finally {
       setLoading(false);
@@ -100,6 +118,8 @@ export function useAuth(): AuthState & AuthActions {
     _user  = null;
     setToken(null);
     setUser(null);
+    localStorage.removeItem('ss_token');
+    localStorage.removeItem('ss_user');
   }, []);
 
   return { user, token, loading, login, signup, logout };

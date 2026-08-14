@@ -4,14 +4,17 @@ from typing import List
 from datetime import datetime
 import logging
 import os
+from dotenv import load_dotenv
 from supabase import create_client
 from .auth import get_current_user
+
+load_dotenv()
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
 logger = logging.getLogger(__name__)
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://awoqphdurcbyshkcwllh.supabase.co")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF3b3FwaGR1cmNieXNoa2N3bGxoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDIyMzk2MDksImV4cCI6MjA1NzgxNTYwOX0.xt4BgGCFMMyPSDEMENoFMBiADJOqbMEFfJblcBpD1wY")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 class ReviewCreate(BaseModel):
@@ -43,6 +46,7 @@ async def list_reviews():
             avg_rating=round(avg, 2),
         )
     except Exception as e:
+        logger.error(f"Reviews fetch error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("", response_model=ReviewResponse)
@@ -60,4 +64,5 @@ async def create_review(body: ReviewCreate, user=Depends(get_current_user)):
         result = supabase.table("reviews").insert(review).execute()
         return ReviewResponse(**result.data[0])
     except Exception as e:
+        logger.error(f"Review creation error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
