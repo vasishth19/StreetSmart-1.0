@@ -16,7 +16,7 @@ declare global {
 export interface RouteResult {
   id: string;
   geometry?: string | Array<[number, number] | { lat: number; lng: number }>;
-  coordinates?: Array<[number, number]>; // backend format: [[lng, lat], ...]
+  coordinates?: number[][]; // backend format: [[lng, lat], ...]
   waypoints?: Array<{ lat?: number; lng?: number; name?: string; [key: string]: any }>;
   heatmap_points?: Array<{ lat?: number; lng?: number; intensity?: number; weight?: number }>;
   [key: string]: any;
