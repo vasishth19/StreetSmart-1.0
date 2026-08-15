@@ -7,15 +7,12 @@ import os
 from dotenv import load_dotenv
 from supabase import create_client
 from .auth import get_current_user
+from app.services.supabase_client import supabase
 
 load_dotenv()
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
 logger = logging.getLogger(__name__)
-
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://awoqphdurcbyshkcwllh.supabase.co")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF3b3FwaGR1cmNieXNoa2N3bGxoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDIyMzk2MDksImV4cCI6MjA1NzgxNTYwOX0.xt4BgGCFMMyPSDEMENoFMBiADJOqbMEFfJblcBpD1wY")
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 class ReviewCreate(BaseModel):
     rating:  int = Field(..., ge=1, le=5)

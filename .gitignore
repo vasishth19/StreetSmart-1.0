@@ -1,4 +1,17 @@
-﻿node_modules/
+﻿# Frontend
+node_modules/
 .next/
 *.node
 .env.local
+
+# Backend
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+backend/.env
+
+# OS / editor
+.DS_Store
+*.log

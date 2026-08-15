@@ -32,7 +32,7 @@ async function fetchOSRMRoute(
     if (waypoint) coords += `;${waypoint.lng},${waypoint.lat}`;
     coords += `;${destination.lng},${destination.lat}`;
     const url = `https://router.project-osrm.org/route/v1/foot/${coords}?geometries=geojson&overview=full&steps=true`;
-    const res  = await fetch(url, {signal:AbortSignal.timeout(8000)});
+    const res = await fetch(url, {signal:AbortSignal.timeout(15000)});
     const data = await res.json();
     if (data.code==='Ok' && data.routes?.length>0) {
       const r = data.routes[0];

@@ -8,7 +8,7 @@ import dynamic from 'next/dynamic';
 import {
   Navigation, Mic, MicOff, Volume2, VolumeX, Layers,
   Shield, ArrowLeft, ChevronRight,
-  MapPin, Accessibility, X,
+  MapPin, Accessibility, X, AlertTriangle,
   LocateFixed, Loader2,
 } from 'lucide-react';
 import GlowButton from '@/components/ui/GlowButton';
@@ -18,7 +18,9 @@ import HUDPanel from '@/components/ui/HUDPanel';
 import PreferenceSelector from '@/components/ui/PreferenceSelector';
 import { useRoutes } from '@/hooks/useRoutes';
 import { useSpeech } from '@/hooks/useSpeech';
+import { apiService } from '@/services/api';
 import type { RouteResult } from '@/services/api';
+import type { BlackSpotReport } from '@/components/map/MapCanvas';
 import toast from 'react-hot-toast';
 
 const MapCanvas = dynamic(() => import('@/components/map/MapCanvas'), { ssr: false });
@@ -234,9 +236,11 @@ export default function MapPage() {
   const [originText,   setOriginText]   = useState('');
   const [destText,     setDestText]     = useState('');
 
-  const [selectedProfile, setSelectedProfile]  = useState('general');
+  const [selectedProfile, setSelectedProfile]  = useState('woman');
   const [selectedRoute,   setSelectedRoute]     = useState<RouteResult | null>(null);
   const [showHeatmap,     setShowHeatmap]       = useState(false);
+  const [showBlackSpots,  setShowBlackSpots]     = useState(true);
+  const [blackSpots,      setBlackSpots]         = useState<BlackSpotReport[]>([]);
   const [audioEnabled,    setAudioEnabled]      = useState(false);
   const [instructionIdx,  setInstructionIdx]    = useState(0);
   const [sidebarOpen,     setSidebarOpen]       = useState(true);
@@ -248,6 +252,17 @@ export default function MapPage() {
   useEffect(() => {
     const user = localStorage.getItem('user');
     if (user) setUsername(JSON.parse(user).username || 'User');
+  }, []);
+
+  // Load community-reported issues for the black-spot map overlay
+  useEffect(() => {
+    apiService.getReports()
+      .then((data: any) => {
+        const list = Array.isArray(data) ? data : (data.reports || data.data || []);
+        const withCoords = list.filter((r: any) => typeof r.lat === 'number' && typeof r.lng === 'number');
+        setBlackSpots(withCoords);
+      })
+      .catch(() => setBlackSpots([]));
   }, []);
 
   const handleLogout = () => {
@@ -391,6 +406,11 @@ export default function MapPage() {
             <button onClick={() => setShowHeatmap((v) => !v)}
               className={`p-2 rounded-lg border transition-all ${showHeatmap ? 'border-[#FFB020]/60 bg-[#FFB020]/10 text-[#FFB020]' : 'border-[#1a2a4a] text-[#8892B0] hover:text-[#FFB020]'}`}>
               <Layers className="w-4 h-4" />
+            </button>
+            <button onClick={() => setShowBlackSpots((v) => !v)}
+              title="Toggle black spots — community-reported unsafe areas"
+              className={`p-2 rounded-lg border transition-all ${showBlackSpots ? 'border-[#FF3B3B]/60 bg-[#FF3B3B]/10 text-[#FF3B3B]' : 'border-[#1a2a4a] text-[#8892B0] hover:text-[#FF3B3B]'}`}>
+              <AlertTriangle className="w-4 h-4" />
             </button>
             <button onClick={() => { setAudioEnabled((v) => !v); if (speaking) stop(); }}
               className={`p-2 rounded-lg border transition-all ${audioEnabled ? 'border-[#B388FF]/60 bg-[#B388FF]/10 text-[#B388FF]' : 'border-[#1a2a4a] text-[#8892B0] hover:text-[#B388FF]'}`}>
@@ -554,6 +574,7 @@ export default function MapPage() {
         <div className="flex-1 relative overflow-hidden">
           <MapCanvas selectedRoute={selectedRoute} routes={routes} showHeatmap={showHeatmap}
             origin={originCoords} destination={destCoords}
+            blackSpots={blackSpots} showBlackSpots={showBlackSpots}
             onRouteSelect={(r) => { setSelectedRoute(r); if (audioEnabled) speak(`${r.name} selected.`); }} />
 
           {selectedRoute && !a11y && (

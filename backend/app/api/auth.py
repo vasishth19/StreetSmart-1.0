@@ -7,7 +7,7 @@ import hashlib
 from jose import JWTError, jwt
 import os
 from dotenv import load_dotenv
-from supabase import create_client
+from app.services.supabase_client import supabase
 
 load_dotenv()
 
@@ -16,10 +16,6 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "streetsmart-secret-key-2026")
 ALGORITHM  = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
-
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://awoqphdurcbyshkcwllh.supabase.co")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF3b3FwaGR1cmNieXNoa2N3bGxoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDIyMzk2MDksImV4cCI6MjA1NzgxNTYwOX0.xt4BgGCFMMyPSDEMENoFMBiADJOqbMEFfJblcBpD1wY")
-supabase     = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 oauth2 = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 

@@ -16,6 +16,7 @@ declare global {
 export interface RouteResult {
   id: string;
   geometry?: string | Array<[number, number] | { lat: number; lng: number }>;
+  coordinates?: Array<[number, number]>; // backend format: [[lng, lat], ...]
   waypoints?: Array<{ lat?: number; lng?: number; name?: string; [key: string]: any }>;
   heatmap_points?: Array<{ lat?: number; lng?: number; intensity?: number; weight?: number }>;
   [key: string]: any;
@@ -28,6 +29,20 @@ interface MapCanvasProps {
   origin: { lat: number; lng: number };
   destination: { lat: number; lng: number };
   onRouteSelect: (route: RouteResult) => void;
+  blackSpots?: BlackSpotReport[];
+  showBlackSpots?: boolean;
+}
+
+export interface BlackSpotReport {
+  id?: string | number;
+  lat: number;
+  lng: number;
+  issue_type: string;
+  severity: string;
+  description?: string;
+  address?: string;
+  votes?: number;
+  created_at: string;
 }
 
 // ─── Route color palette (matches your existing theme) ───────────────────────
@@ -115,6 +130,28 @@ function makeDotIcon(L: any, color: string, label: string): any {
   });
 }
 
+function makeBlackSpotIcon(L: any, color: string, emoji: string, elevated: boolean): any {
+  const pulse = elevated ? `
+      <circle cx="17" cy="17" r="15" fill="${color}" opacity="0.35">
+        <animate attributeName="r" values="10;16;10" dur="1.8s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.5;0.05;0.5" dur="1.8s" repeatCount="indefinite"/>
+      </circle>` : '';
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 34 34">
+      ${pulse}
+      <circle cx="17" cy="17" r="10" fill="${color}" stroke="#05080F" stroke-width="2"/>
+      <text x="17" y="22" text-anchor="middle" font-size="12">${emoji}</text>
+    </svg>`;
+
+  return L.divIcon({
+    html: svg,
+    className: '',
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+    popupAnchor: [0, -17],
+  });
+}
+
 // ─── Dark tile layer (matches app theme) ─────────────────────────────────────
 // Using CartoDB Dark Matter — free, no API key required
 const DARK_TILE_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
@@ -127,6 +164,8 @@ export default function MapCanvas({
   origin,
   destination,
   onRouteSelect,
+  blackSpots = [],
+  showBlackSpots = false,
 }: MapCanvasProps) {
   const mapRef       = useRef<HTMLDivElement>(null);
   const mapInstance  = useRef<any>(null);
@@ -135,6 +174,7 @@ export default function MapCanvas({
   const originMarkerRef  = useRef<any>(null);
   const destMarkerRef    = useRef<any>(null);
   const waypointMarkersRef = useRef<any[]>([]);
+  const blackSpotMarkersRef = useRef<any[]>([]);
   const pulseRef     = useRef<HTMLDivElement | null>(null);
 
   const [mapReady, setMapReady] = useState(false);
@@ -262,7 +302,8 @@ export default function MapCanvas({
       const isSelected = selectedRoute?.id === route.id;
       const color = ROUTE_COLORS[idx % ROUTE_COLORS.length];
 
-      // Decode path — supports encoded polyline string or lat/lng arrays
+      // Decode path — supports encoded polyline string, GeoJSON-style arrays,
+      // or the StreetSmart backend's own `coordinates: [[lng, lat], ...]` field
       let path: [number, number][] = [];
 
       if (route.geometry) {
@@ -276,6 +317,13 @@ export default function MapCanvas({
               : [pt.lat ?? pt.latitude, pt.lng ?? pt.longitude] as [number, number]
           );
         }
+      }
+
+      if (!path.length && Array.isArray((route as any).coordinates)) {
+        // Backend RouteResult.coordinates is [[lng, lat], ...]
+        path = (route as any).coordinates.map(
+          (pt: [number, number]) => [pt[1], pt[0]] as [number, number]
+        );
       }
 
       if (!path.length) {
@@ -389,6 +437,54 @@ export default function MapCanvas({
       waypointMarkersRef.current.push(marker);
     });
   }, [mapReady, selectedRoute]);
+
+  // ── Community-reported black spots ─────────────────────────────────────────
+  useEffect(() => {
+    if (!mapReady || !mapInstance.current) return;
+    const L = window.L;
+
+    blackSpotMarkersRef.current.forEach((m) => m.remove());
+    blackSpotMarkersRef.current = [];
+
+    if (!showBlackSpots || !blackSpots.length) return;
+
+    blackSpots.forEach((spot) => {
+      const elevated = spot.severity === 'high' || spot.severity === 'critical' || (spot.votes ?? 0) >= 3;
+      const color =
+        spot.severity === 'critical' ? '#FF0000'
+        : spot.severity === 'high'   ? '#FF3B3B'
+        : spot.severity === 'medium' ? '#FFB020'
+        : '#00FF9C';
+      const hour = (() => { try { return new Date(spot.created_at).getHours(); } catch { return -1; } })();
+      const isNight = hour >= 22 || hour < 6;
+
+      const marker = L.marker([spot.lat, spot.lng], {
+        icon: makeBlackSpotIcon(L, color, '⚠️', elevated),
+        zIndexOffset: elevated ? 400 : 200,
+        title: spot.address || spot.issue_type,
+      }).addTo(mapInstance.current);
+
+      marker.bindPopup(`
+        <div style="font-family:monospace;font-size:11px;min-width:160px;color:#0B1020">
+          <div style="font-weight:bold;text-transform:capitalize;margin-bottom:2px;">
+            ${spot.issue_type.replace(/_/g, ' ')}
+          </div>
+          <div style="color:${color};font-weight:bold;text-transform:uppercase;font-size:10px;">
+            ${spot.severity} severity${elevated ? ' · BLACK SPOT' : ''}
+          </div>
+          ${isNight ? '<div style="color:#7B2FBE;font-size:10px;margin-top:2px;">🌙 Reported during night hours</div>' : ''}
+          ${spot.address ? `<div style="margin-top:4px;color:#444;">${spot.address}</div>` : ''}
+        </div>
+      `);
+
+      blackSpotMarkersRef.current.push(marker);
+    });
+
+    return () => {
+      blackSpotMarkersRef.current.forEach((m) => m.remove());
+      blackSpotMarkersRef.current = [];
+    };
+  }, [mapReady, blackSpots, showBlackSpots]);
 
   // ─────────────────────────────────────────────────────────────────────────
   if (error) {

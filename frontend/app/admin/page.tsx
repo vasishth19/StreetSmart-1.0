@@ -7,6 +7,7 @@ import { ArrowLeft, Shield, Users, FileText, Star, CheckCircle, XCircle, Flag, A
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import NeonCard from '@/components/ui/NeonCard';
 import GlowButton from '@/components/ui/GlowButton';
+import toast from 'react-hot-toast';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const WEEK = [
@@ -52,16 +53,40 @@ export default function AdminPage() {
     else setErr('Invalid credentials');
   };
 
+  const [fetchError,setFetchError]=useState('');
+
   const fetchReports=async()=>{
     setLoadR(true);
-    try{const r=await fetch(`${API}/reports`);const d=await r.json();setReports(Array.isArray(d)?d:(d.reports||[]));}
-    catch{}finally{setLoadR(false);}
+    try{
+      const r=await fetch(`${API}/reports`);
+      if(!r.ok) throw new Error(`Server returned ${r.status}`);
+      const d=await r.json();
+      setReports(Array.isArray(d)?d:(d.reports||[]));
+      setFetchError('');
+    }catch(e:any){
+      const msg = e instanceof TypeError
+        ? `Cannot reach the server at ${API} — reports were not deleted, they just couldn't be loaded.`
+        : `Failed to load reports: ${e.message}`;
+      setFetchError(msg);
+      toast.error(msg);
+    }finally{setLoadR(false);}
   };
 
   const fetchReviews=async()=>{
     setLoadRv(true);
-    try{const r=await fetch(`${API}/reviews`);const d=await r.json();setReviews(Array.isArray(d)?d:(d.reviews||d.data||[]));}
-    catch{}finally{setLoadRv(false);}
+    try{
+      const r=await fetch(`${API}/reviews`);
+      if(!r.ok) throw new Error(`Server returned ${r.status}`);
+      const d=await r.json();
+      setReviews(Array.isArray(d)?d:(d.reviews||d.data||[]));
+      setFetchError('');
+    }catch(e:any){
+      const msg = e instanceof TypeError
+        ? `Cannot reach the server at ${API} — reviews were not deleted, they just couldn't be loaded.`
+        : `Failed to load reviews: ${e.message}`;
+      setFetchError(msg);
+      toast.error(msg);
+    }finally{setLoadRv(false);}
   };
 
   useEffect(()=>{if(authed){fetchReports();fetchReviews();}}, [authed]);

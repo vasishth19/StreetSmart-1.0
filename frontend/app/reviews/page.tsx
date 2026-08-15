@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { ArrowLeft, Star, Send, Navigation, CheckCircle, Loader2, RefreshCw } from 'lucide-react';
+import toast from 'react-hot-toast';
 import GlowButton from '@/components/ui/GlowButton';
 import NeonCard from '@/components/ui/NeonCard';
 import { useReviews } from '@/hooks/useReviews';
@@ -86,10 +87,11 @@ export default function ReviewsPage() {
     setLoading(true);
     try {
       await submitReview(rating, comment);
-    } catch { /* allow offline */ }
-    finally {
-      setLoading(false);
       setSubmitted(true);
+    } catch (err: any) {
+      toast.error(err?.message || 'Could not save your review — check your connection and try again.');
+    } finally {
+      setLoading(false);
     }
   };
 

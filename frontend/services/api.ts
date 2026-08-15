@@ -99,6 +99,15 @@ export interface ReportRequest {
   description:  string;
   address?:     string;
   anonymous?:   boolean;
+  reporter_contact?: string;
+}
+
+export interface SOSRequest {
+  lat: number;
+  lng: number;
+  accuracy?: number;
+  contact_count: number;
+  note?: string;
 }
 
 export interface AnalyticsData {
@@ -145,6 +154,11 @@ export const apiService = {
 
   async getReports() {
     const res = await apiClient.get('/reports');
+    return res.data;
+  },
+
+  async triggerSOS(payload: SOSRequest) {
+    const res = await apiClient.post('/sos', payload);
     return res.data;
   },
 

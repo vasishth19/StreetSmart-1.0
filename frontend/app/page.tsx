@@ -1,6 +1,7 @@
 'use client';
 
 import PWAInstallBanner from '@/components/ui/PWAInstallBanner';
+import AnimatedLogo from '@/components/ui/AnimatedLogo';
 import { Suspense, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import dynamic from 'next/dynamic';
@@ -30,6 +31,7 @@ function SceneLoader() {
 }
 
 const FEATURES = [
+  { icon: Shield,        title: "Women's Safety, Built In",   description: 'Every route is scored for isolation, lighting and community-flagged risk — designed first for women navigating alone.', color: '#FF69B4' },
   { icon: Shield,        title: 'Safety-First Routing',   description: 'Routes scored by real-time crime data, lighting, CCTV coverage and community reports.', color: '#00FF9C' },
   { icon: Accessibility, title: 'Universal Accessibility', description: 'Wheelchair ramps, smooth surfaces, no stairs — every body navigates with confidence.',    color: '#00E5FF' },
   { icon: Volume2,       title: 'Audio Navigation',        description: 'Turn-by-turn voice guidance for visually impaired users — completely hands-free.',          color: '#B388FF' },
@@ -53,14 +55,14 @@ const STATS = [
 ];
 
 const QUICK_LINKS = [
-  { href: '/map',      label: 'Navigate',     icon: '🗺️', color: '#00FF9C' },
-  { href: '/report',   label: 'Civic Report', icon: '🚨', color: '#FF3B3B' },
-  { href: '/reviews',  label: 'Reviews',      icon: '⭐', color: '#FFB020' },
-  { href: '/dashboard',label: 'Dashboard',    icon: '📊', color: '#00E5FF' },
-  { href: '/profile',  label: 'Profile',      icon: '👤', color: '#B388FF' },
-  { href: '/admin',    label: 'Admin Panel',  icon: '🔐', color: '#9B5DE5' },
-  { href: '/login',    label: 'Sign In',      icon: '🔑', color: '#8892B0' },
-  { href: '/signup',   label: 'Sign Up',      icon: '✨', color: '#00FF9C' },
+  { href: '/map',       label: 'Navigate',     desc: 'Get a safety-scored route',  icon: '🗺️', color: '#00FF9C' },
+  { href: '/report',    label: 'Civic Report', desc: 'Flag an unsafe area',        icon: '🚨', color: '#FF3B3B' },
+  { href: '/reviews',   label: 'Reviews',      desc: 'Rate your last route',       icon: '⭐', color: '#FFB020' },
+  { href: '/dashboard', label: 'Dashboard',    desc: 'City safety analytics',      icon: '📊', color: '#00E5FF' },
+  { href: '/profile',   label: 'Profile',      desc: 'Safety prefs + contacts',    icon: '👤', color: '#B388FF' },
+  { href: '/admin',     label: 'Admin Panel',  desc: 'Moderate reports & reviews', icon: '🔐', color: '#9B5DE5' },
+  { href: '/login',     label: 'Sign In',      desc: 'Access your account',        icon: '🔑', color: '#8892B0' },
+  { href: '/signup',    label: 'Sign Up',      desc: 'Join StreetSmart free',      icon: '✨', color: '#00FF9C' },
 ];
 
 export default function LandingPage() {
@@ -84,22 +86,18 @@ export default function LandingPage() {
           <Suspense fallback={<SceneLoader />}><CityScene /></Suspense>
         </div>
 
-        {/* ✅ FIXED: Much darker gradient — text clearly visible over 3D city */}
         <div className="absolute inset-0 z-10 pointer-events-none"
           style={{ background: 'linear-gradient(to bottom, rgba(5,8,15,0.65) 0%, rgba(5,8,15,0.2) 40%, rgba(5,8,15,0.5) 70%, rgba(5,8,15,1) 100%)' }} />
 
         {/* Nav */}
         <nav className="relative z-20 flex items-center justify-between px-6 py-4 lg:px-12">
-          <motion.div initial={{ opacity:0, x:-20 }} animate={{ opacity:1, x:0 }} transition={{ duration:0.5 }} className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-[#00FF9C]/10 border border-[#00FF9C]/40 flex items-center justify-center">
-              <Navigation className="w-4 h-4 text-[#00FF9C]" />
-            </div>
+          <motion.div initial={{ opacity:0, x:-20 }} animate={{ opacity:1, x:0 }} transition={{ duration:0.5 }} className="flex items-center gap-2">
+            <AnimatedLogo size={34} loop={false} />
             <span className="font-bold text-lg tracking-tight text-[#E6F1FF]">Street<span className="text-[#00FF9C]">Smart</span></span>
             <span className="font-mono text-xs text-[#8892B0] hidden sm:block">v1.0</span>
           </motion.div>
           <motion.div initial={{ opacity:0, x:20 }} animate={{ opacity:1, x:0 }} transition={{ duration:0.5 }} className="flex items-center gap-2">
             <Link href="/map"><GlowButton color="cyan" size="sm">Launch Navigator</GlowButton></Link>
-            {/* ✅ FIXED: Brighter nav text */}
             <Link href="/login"><button className="hidden sm:block text-sm text-[#CCD6F6] hover:text-[#00E5FF] transition-colors px-4 py-2">Sign In</button></Link>
             <Link href="/admin"><button className="hidden md:block text-xs text-[#9B5DE5] hover:text-[#B388FF] transition-colors px-3 py-2 border border-[#9B5DE5]/30 rounded-lg font-mono">🔐 ADMIN</button></Link>
           </motion.div>
@@ -110,14 +108,23 @@ export default function LandingPage() {
           <AnimatePresence>
             {loaded && (
               <>
-                {/* ✅ FIXED: Removed · LUCKNOW */}
+                <motion.div initial={{ opacity:0, scale:0.6 }} animate={{ opacity:1, scale:1 }} transition={{ duration:0.6 }}
+                  className="mb-2">
+                  <AnimatedLogo size={140} loop />
+                </motion.div>
+
                 <motion.div initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.1 }}
+                  className="mb-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass-panel text-xs font-mono text-[#FF69B4] border border-[#FF69B4]/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#FF69B4] animate-pulse" />
+                  👩 BUILT FOR WOMEN'S SAFETY FIRST
+                </motion.div>
+
+                <motion.div initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.15 }}
                   className="mb-6 inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass-panel text-xs font-mono text-[#00FF9C] border border-[#00FF9C]/20">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#00FF9C] animate-pulse" />
                   SMART CITY NAVIGATION · ONLINE
                 </motion.div>
 
-                {/* ✅ FIXED: textShadow so heading pops over city background */}
                 <motion.h1 initial={{ opacity:0, y:30 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.3 }}
                   className="text-5xl md:text-7xl lg:text-8xl font-bold mb-6 leading-none tracking-tight"
                   style={{ textShadow: '0 2px 40px rgba(0,0,0,0.95), 0 0 80px rgba(0,0,0,0.6)' }}>
@@ -125,7 +132,6 @@ export default function LandingPage() {
                   <br />Navigate <span className="neon-text-cyan">Smarter.</span>
                 </motion.h1>
 
-                {/* ✅ FIXED: #CCD6F6 (bright white-blue) instead of dim #8892B0 + textShadow */}
                 <motion.p initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.5 }}
                   className="max-w-2xl text-lg md:text-xl text-[#CCD6F6] mb-10 leading-relaxed"
                   style={{ textShadow: '0 1px 20px rgba(0,0,0,1)' }}>
@@ -136,7 +142,6 @@ export default function LandingPage() {
                   — not just speed. Built for the cities of tomorrow.
                 </motion.p>
 
-                {/* ✅ FIXED: Inactive profile buttons — brighter text + semi-transparent bg */}
                 <motion.div initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.65 }}
                   className="flex flex-wrap gap-2 justify-center mb-6">
                   {PROFILES.map((profile, i) => (
@@ -151,7 +156,6 @@ export default function LandingPage() {
                   ))}
                 </motion.div>
 
-                {/* ✅ FIXED: Profile desc — bright text + shadow */}
                 <motion.p key={activeProfile} initial={{ opacity:0, y:4 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.25 }}
                   className="text-sm text-[#CCD6F6] mb-10 font-mono h-5"
                   style={{ textShadow: '0 1px 12px rgba(0,0,0,1)' }}>
@@ -183,7 +187,6 @@ export default function LandingPage() {
             {STATS.map(stat => (
               <div key={stat.label} className="text-center">
                 <div className="text-2xl font-bold font-mono" style={{ color:stat.color, textShadow:`0 0 20px ${stat.color}40` }}>{stat.value}</div>
-                {/* ✅ FIXED: stat labels brighter */}
                 <div className="text-xs text-[#CCD6F6] mt-1">{stat.label}</div>
               </div>
             ))}
@@ -191,21 +194,35 @@ export default function LandingPage() {
         </motion.div>
       </section>
 
-      {/* ── QUICK ACCESS PILLS ── */}
-      <section className="relative z-10 border-b border-[#00E5FF]/10 bg-[#05080F]/95 backdrop-blur-lg">
-        <div className="max-w-6xl mx-auto px-6 py-5">
-          <p className="text-xs font-mono text-[#8892B0] mb-3 tracking-widest">// QUICK ACCESS</p>
-            <div className="flex flex-wrap gap-2">
-              {QUICK_LINKS.map(link => (
-                <Link key={link.href + link.label} href={link.href}>
-                   <motion.div whileHover={{ scale:1.05, y:-2 }} whileTap={{ scale:0.97 }}
-                     className="flex items-center gap-2 px-4 py-2 rounded-full border transition-all duration-200 cursor-pointer text-sm font-medium"
-                     style={{ borderColor:`${link.color}30`, color:link.color, background:`${link.color}08` }}>
-                    <span>{link.icon}</span><span>{link.label}</span>
-               </motion.div>
-            </Link>
-           ))}
-         </div>
+      {/* ── QUICK ACCESS GRID ── */}
+      <section className="relative z-10 border-b border-[#00E5FF]/10 bg-[#05080F]/95 backdrop-blur-lg py-10 px-6">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {QUICK_LINKS.map((link, i) => (
+              <Link key={link.href + link.label} href={link.href}>
+                <motion.div
+                  initial={{ opacity: 0, y: 12 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.05 }}
+                  whileHover={{ y: -4, borderColor: link.color }}
+                  whileTap={{ scale: 0.97 }}
+                  className="group flex flex-col items-start gap-1 p-4 rounded-xl border cursor-pointer transition-colors duration-200"
+                  style={{
+                    borderColor: `${link.color}25`,
+                    background: `${link.color}0A`,
+                    boxShadow: `0 0 0px ${link.color}00`,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.boxShadow = `0 0 24px ${link.color}30`; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.boxShadow = `0 0 0px ${link.color}00`; }}
+                >
+                  <span className="text-xl">{link.icon}</span>
+                  <span className="text-sm font-semibold" style={{ color: link.color }}>{link.label}</span>
+                  <span className="text-xs text-[#8892B0] leading-snug">{link.desc}</span>
+                </motion.div>
+              </Link>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -302,7 +319,7 @@ export default function LandingPage() {
       <footer className="relative z-10 border-t border-[#00E5FF]/10 py-8 px-6 text-center">
         <p className="text-[#8892B0] text-sm font-mono">StreetSmart v1.0 · Smart City Navigation · Built for Inclusivity</p>
        <p className="text-xs font-mono mt-2">
-  <span className="text-white">Built by</span> <span className="text-[#00FF9C]">Vansh Chaturvedi</span> · <span className="text-[#00FF9C]">Assmi Singh</span> · <span className="text-[#00FF9C]">Anshika Dixit</span> · <span className="text-[#00FF9C]">Prakhar Dubey</span> · <span className="text-white">2026</span>
+  <span className="text-white">Built by</span> <span className="text-[#00FF9C]">Vansh Chaturvedi</span> · <span className="text-[#00FF9C]">Assmi Singh</span> · <span className="text-[#00FF9C]">and team</span> · <span className="text-white">2026</span>
 </p>
       </footer>
     </main>

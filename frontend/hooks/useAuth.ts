@@ -62,11 +62,16 @@ export function useAuth() {
         return;
       }
 
-      const res = await fetch(`${API}/auth/login`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body:    new URLSearchParams({ username: email, password }),
-      });
+      let res: Response;
+      try {
+        res = await fetch(`${API}/auth/login`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body:    new URLSearchParams({ username: email, password }),
+        });
+      } catch (networkErr) {
+        throw new Error(`Cannot reach the server at ${API}. Is the backend running?`);
+      }
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -96,11 +101,16 @@ export function useAuth() {
   const signup = useCallback(async (name: string, email: string, password: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/auth/signup`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ name, email, password }),
-      });
+      let res: Response;
+      try {
+        res = await fetch(`${API}/auth/signup`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ name, email, password }),
+        });
+      } catch (networkErr) {
+        throw new Error(`Cannot reach the server at ${API}. Is the backend running?`);
+      }
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));

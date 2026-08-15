@@ -8,24 +8,7 @@ import toast from 'react-hot-toast';
 import GlowButton from '@/components/ui/GlowButton';
 import NeonCard from '@/components/ui/NeonCard';
 import { apiService } from '@/services/api';
-
-const ISSUE_TYPES = [
-  { value: 'poor_lighting', label: 'Poor Lighting', icon: '💡', color: '#FFB020' },
-  { value: 'unsafe_area', label: 'Unsafe Area', icon: '⚠️', color: '#FF3B3B' },
-  { value: 'broken_sidewalk', label: 'Broken Sidewalk', icon: '🚧', color: '#FFB020' },
-  { value: 'missing_ramp', label: 'Missing Ramp', icon: '♿', color: '#00FF9C' },
-  { value: 'construction', label: 'Construction', icon: '🏗️', color: '#FFB020' },
-  { value: 'harassment', label: 'Harassment Report', icon: '🚨', color: '#FF3B3B' },
-  { value: 'flooding', label: 'Flooding', icon: '💧', color: '#00E5FF' },
-  { value: 'obstruction', label: 'Obstruction', icon: '🚫', color: '#FF3B3B' },
-];
-
-const SEVERITIES = [
-  { value: 'low', label: 'Low', color: '#00FF9C', desc: 'Minor inconvenience' },
-  { value: 'medium', label: 'Medium', color: '#FFB020', desc: 'Needs attention' },
-  { value: 'high', label: 'High', color: '#FF3B3B', desc: 'Safety concern' },
-  { value: 'critical', label: 'Critical', color: '#FF0000', desc: 'Immediate danger' },
-];
+import { ISSUE_TYPES, SEVERITIES } from '@/lib/reportMeta';
 
 interface ExistingReport {
   id: string;
@@ -52,6 +35,8 @@ export default function ReportPage() {
   const [votedIds, setVotedIds] = useState<Set<string>>(new Set());
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
+  const [anonymous, setAnonymous] = useState(true);
+  const [reporterContact, setReporterContact] = useState('');
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -89,7 +74,8 @@ export default function ReportPage() {
         severity: severity as any,
         description,
         address,
-        anonymous: true,
+        anonymous,
+        reporter_contact: anonymous ? undefined : (reporterContact || undefined),
       });
 
       const newReport: ExistingReport = {
@@ -107,23 +93,13 @@ export default function ReportPage() {
       setReports(prev => [newReport, ...prev]);
       setSubmitted(true);
       toast.success('Report submitted! Thank you for making the city safer.');
-    } catch (error) {
-      // Use mock success in case backend is not running
-      const newReport: ExistingReport = {
-        id: Date.now().toString(),
-        issue_type: issueType,
-        severity,
-        description,
-        status: 'reported',
-        votes: 0,
-        address,
-        created_at: new Date().toISOString().split('T')[0],
-        lat: 26.8467,
-        lng: 80.9462,
-      };
-      setReports(prev => [newReport, ...prev]);
-      setSubmitted(true);
-      toast.success('Report submitted successfully!');
+    } catch (error: any) {
+      // Do NOT fake success — a report that fails to save must be surfaced,
+      // otherwise it silently vanishes on refresh with no way to know why.
+      const message = error instanceof TypeError
+        ? 'Cannot reach the server. Check that the backend is running and reachable.'
+        : (error?.response?.data?.detail || error?.message || 'Could not submit report — please try again.');
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -321,6 +297,46 @@ export default function ReportPage() {
                       )}
                     </div>
 
+                    {/* Anonymous Reporting Toggle */}
+                    <div className="rounded-lg border border-[#8892B0]/20 bg-[#05080F]/60 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-xs font-mono text-[#E6F1FF] flex items-center gap-1.5">
+                            🕵️ REPORT ANONYMOUSLY
+                          </div>
+                          <p className="text-xs text-[#8892B0] mt-0.5">
+                            {anonymous
+                              ? 'Your identity will not be collected or stored with this report.'
+                              : 'Add optional contact info so authorities can follow up with you.'}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={anonymous}
+                          onClick={() => setAnonymous(prev => !prev)}
+                          className={`relative flex-shrink-0 w-11 h-6 rounded-full transition-colors ${
+                            anonymous ? 'bg-[#00FF9C]/70' : 'bg-[#8892B0]/30'
+                          }`}
+                        >
+                          <span
+                            className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-[#05080F] transition-transform ${
+                              anonymous ? 'translate-x-5' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </div>
+                      {!anonymous && (
+                        <input
+                          type="text"
+                          placeholder="Email or phone (optional)"
+                          value={reporterContact}
+                          onChange={e => setReporterContact(e.target.value)}
+                          className="w-full mt-3 bg-[#05080F]/80 border border-[#00E5FF]/20 rounded-lg px-3 py-2 text-sm text-[#E6F1FF] placeholder-[#4A5568] focus:outline-none focus:border-[#00E5FF]/60 transition-colors"
+                        />
+                      )}
+                    </div>
+
                     <GlowButton
                       color="red"
                       className="w-full"
@@ -362,6 +378,8 @@ export default function ReportPage() {
                       setIssueType('');
                       setDescription('');
                       setAddress('');
+                      setAnonymous(true);
+                      setReporterContact('');
                     }}
                     className="text-sm text-[#00E5FF] hover:underline"
                   >

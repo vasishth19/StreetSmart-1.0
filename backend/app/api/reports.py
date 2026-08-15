@@ -9,13 +9,10 @@ from supabase import create_client
 load_dotenv()
 
 from app.models.report import ReportRequest, ReportResponse
+from app.services.supabase_client import supabase
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://awoqphdurcbyshkcwllh.supabase.co")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF3b3FwaGR1cmNieXNoa2N3bGxoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDIyMzk2MDksImV4cCI6MjA1NzgxNTYwOX0.xt4BgGCFMMyPSDEMENoFMBiADJOqbMEFfJblcBpD1wY")
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 @router.post("/reports")
 async def submit_report(report: ReportRequest):
@@ -30,6 +27,9 @@ async def submit_report(report: ReportRequest):
             "created_at":  datetime.utcnow().isoformat(),
             "votes":       0,
             "address":     report.address,
+            "anonymous":   report.anonymous,
+            # Never store contact info for anonymous reports, even if one was sent
+            "reporter_contact": None if report.anonymous else report.reporter_contact,
         }
         result = supabase.table("reports").insert(new_report).execute()
         return result.data[0]
@@ -46,6 +46,9 @@ async def get_reports(limit: int = 50, issue_type: str = None, severity: str = N
         if severity:
             query = query.eq("severity", severity)
         result = query.order("created_at", desc=True).limit(limit).execute()
+        # Public listing should never leak reporter contact info
+        for row in result.data:
+            row.pop("reporter_contact", None)
         return result.data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

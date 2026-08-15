@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     MAPBOX_SECRET_TOKEN: str = ""
     NEXT_PUBLIC_MAPBOX_TOKEN: str = ""
 
+    # Supabase — set these in backend/.env. The project this URL/key
+    # pointed to previously no longer resolves (deleted/expired), so a
+    # fresh Supabase project's credentials MUST be supplied via .env.
+    SUPABASE_URL: str = ""
+    SUPABASE_KEY: str = ""
+
     # CORS
     BACKEND_CORS_ORIGINS: str = '["http://localhost:3000","http://127.0.0.1:3000"]'
 

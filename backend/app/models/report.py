@@ -30,6 +30,7 @@ class ReportRequest(BaseModel):
     severity: IssueSeverity = IssueSeverity.MEDIUM
     description: str = Field(..., min_length=10, max_length=500)
     anonymous: bool = True
+    reporter_contact: Optional[str] = Field(None, max_length=120)
     address: Optional[str] = None
 
 

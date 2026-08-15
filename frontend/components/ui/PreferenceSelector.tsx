@@ -9,20 +9,20 @@ interface PreferenceSelectorProps {
 
 const PROFILES = [
   {
-    value: 'general',
-    label: 'General',
-    icon: '🚶',
-    color: '#00E5FF',
-    desc: 'Balanced routing',
-    weights: { safety: 35, lighting: 25, crowd: 20, access: 20 },
-  },
-  {
     value: 'woman',
     label: 'Woman',
     icon: '👩',
     color: '#FF69B4',
     desc: 'Safety + lit routes',
     weights: { safety: 45, lighting: 30, crowd: 15, access: 10 },
+  },
+  {
+    value: 'general',
+    label: 'General',
+    icon: '🚶',
+    color: '#00E5FF',
+    desc: 'Balanced routing',
+    weights: { safety: 35, lighting: 25, crowd: 20, access: 20 },
   },
   {
     value: 'elderly',

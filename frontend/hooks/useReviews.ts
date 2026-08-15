@@ -58,31 +58,19 @@ export function useReviews() {
         body: JSON.stringify({ rating, comment }),
       });
 
-      if (res.ok) {
-        const newReview = await res.json();
-        setReviews((prev) => [newReview, ...prev]);
-      } else {
-        // Demo: add locally
-        const mock: Review = {
-          id:         Date.now(),
-          user_id:    1,
-          user_name:  'You',
-          rating,
-          comment,
-          created_at: new Date().toISOString(),
-        };
-        setReviews((prev) => [mock, ...prev]);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Server returned ${res.status}`);
       }
-    } catch {
-      const mock: Review = {
-        id:         Date.now(),
-        user_id:    1,
-        user_name:  'You',
-        rating,
-        comment,
-        created_at: new Date().toISOString(),
-      };
-      setReviews((prev) => [mock, ...prev]);
+
+      const newReview = await res.json();
+      setReviews((prev) => [newReview, ...prev]);
+    } catch (err: any) {
+      // Re-throw so the UI shows a real error instead of pretending it saved.
+      if (err instanceof TypeError) {
+        throw new Error('Cannot reach the server. Check that the backend is running and reachable.');
+      }
+      throw err;
     } finally {
       setSubmitting(false);
     }

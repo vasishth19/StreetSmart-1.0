@@ -15,6 +15,7 @@ from app.api.reports     import router as reports_router
 from app.api.auth        import router as auth_router
 from app.api.reviews     import router as reviews_router
 from app.api.metrics     import metrics_router
+from app.api.sos         import router as sos_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("streetsmart")
@@ -43,6 +44,7 @@ app.include_router(preferences_router)
 app.include_router(reports_router)
 app.include_router(reviews_router)
 app.include_router(metrics_router)
+app.include_router(sos_router)
 
 # ── Health ────────────────────────────────────────────────────────
 @app.get("/health")

@@ -7,12 +7,13 @@ import { ArrowLeft, Navigation, User, Activity, Shield, FileText, Edit3, Save, L
 import GlowButton from '@/components/ui/GlowButton';
 import NeonCard from '@/components/ui/NeonCard';
 import { useAuth } from '@/hooks/useAuth';
+import { useEmergencyContacts } from '@/hooks/useEmergencyContacts';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 const PROFILE_TYPES = [
-  { value:'general',           label:'General',       icon:'🧑', color:'#00E5FF', desc:'Balanced across all 4 safety factors' },
   { value:'woman',             label:'Women Safety',  icon:'👩', color:'#FF69B4', desc:'Safety 45% + Lighting 30% — avoids isolated paths' },
+  { value:'general',           label:'General',       icon:'🧑', color:'#00E5FF', desc:'Balanced across all 4 safety factors' },
   { value:'elderly',           label:'Elderly',       icon:'🧓', color:'#FFB020', desc:'Accessibility 35% — shorter, rest-stop routes' },
   { value:'wheelchair',        label:'Wheelchair',    icon:'♿', color:'#00FF9C', desc:'Accessibility 50% — ramps and smooth surfaces only' },
   { value:'visually_impaired', label:'Vis. Impaired', icon:'👁️', color:'#B388FF', desc:'Audio navigation + high contrast display' },
@@ -20,8 +21,11 @@ const PROFILE_TYPES = [
 
 export default function ProfilePage() {
   const { user } = useAuth();
+  const { contacts, addContact, removeContact, maxContacts } = useEmergencyContacts();
+  const [contactName, setContactName] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
   const [editing, setEditing] = useState(false);
-  const [selectedProfile, setSelectedProfile] = useState('general');
+  const [selectedProfile, setSelectedProfile] = useState('woman');
   const [name,  setName]  = useState('');
   const [phone, setPhone] = useState('');
   const [city,  setCity]  = useState('');
@@ -329,6 +333,69 @@ export default function ProfilePage() {
                   </motion.button>
                 ))}
               </div>
+            </NeonCard>
+          </motion.div>
+
+          <motion.div initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.22 }}>
+            <NeonCard color="#FF3B3B">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">🆘</span>
+                  <span className="font-mono text-xs text-[#FF3B3B] tracking-widest">// EMERGENCY CONTACTS</span>
+                </div>
+                <span className="text-xs font-mono text-[#4A5568]">{contacts.length}/{maxContacts}</span>
+              </div>
+              <p className="text-xs text-[#8892B0] mb-4">
+                Hold the SOS button anywhere in the app to alert these contacts with your live location.
+              </p>
+              <div className="space-y-2 mb-4">
+                {contacts.map(c => (
+                  <div key={c.id} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-[#FF3B3B]/5 border border-[#FF3B3B]/15">
+                    <div>
+                      <div className="text-sm font-semibold text-[#E6F1FF]">{c.name}</div>
+                      <div className="text-xs font-mono text-[#8892B0]">{c.phone}</div>
+                    </div>
+                    <button onClick={() => removeContact(c.id)}
+                      className="text-xs font-mono text-[#FF3B3B]/70 hover:text-[#FF3B3B] px-2 py-1">
+                      REMOVE
+                    </button>
+                  </div>
+                ))}
+                {contacts.length === 0 && (
+                  <div className="text-xs text-[#4A5568] italic py-2">No emergency contacts added yet.</div>
+                )}
+              </div>
+              {contacts.length < maxContacts && (
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    placeholder="Name"
+                    value={contactName}
+                    onChange={e => setContactName(e.target.value)}
+                    className="flex-1 bg-[#05080F]/80 border border-[#FF3B3B]/20 rounded-lg px-3 py-2 text-sm text-[#E6F1FF] placeholder-[#4A5568] focus:outline-none focus:border-[#FF3B3B]/60"
+                  />
+                  <input
+                    type="tel"
+                    placeholder="Phone number"
+                    value={contactPhone}
+                    onChange={e => setContactPhone(e.target.value)}
+                    className="flex-1 bg-[#05080F]/80 border border-[#FF3B3B]/20 rounded-lg px-3 py-2 text-sm text-[#E6F1FF] placeholder-[#4A5568] focus:outline-none focus:border-[#FF3B3B]/60"
+                  />
+                  <GlowButton
+                    color="red"
+                    size="md"
+                    onClick={() => {
+                      if (!contactName.trim() || !contactPhone.trim()) return;
+                      addContact(contactName.trim(), contactPhone.trim());
+                      setContactName('');
+                      setContactPhone('');
+                    }}
+                    disabled={!contactName.trim() || !contactPhone.trim()}
+                  >
+                    Add
+                  </GlowButton>
+                </div>
+              )}
             </NeonCard>
           </motion.div>
 
