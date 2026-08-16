@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import type { RouteResult } from '@/services/api';
 // ─── Install these packages ───────────────────────────────────────────────────
 // npm install leaflet leaflet.heat @types/leaflet
 // ─────────────────────────────────────────────────────────────────────────────
@@ -10,16 +11,6 @@ declare global {
     L: any;
     _leafletLoaded: boolean;
   }
-}
-
-// Paste your RouteResult type here or import from your services/api file
-export interface RouteResult {
-  id: string;
-  geometry?: string | Array<[number, number] | { lat: number; lng: number }>;
-  coordinates?: number[][]; // backend format: [[lng, lat], ...]
-  waypoints?: Array<{ lat?: number; lng?: number; name?: string; [key: string]: any }>;
-  heatmap_points?: Array<{ lat?: number; lng?: number; intensity?: number; weight?: number }>;
-  [key: string]: any;
 }
 
 interface MapCanvasProps {
@@ -306,12 +297,13 @@ export default function MapCanvas({
       // or the StreetSmart backend's own `coordinates: [[lng, lat], ...]` field
       let path: [number, number][] = [];
 
-      if (route.geometry) {
-        if (typeof route.geometry === 'string') {
+      const routeGeometry = (route as any).geometry;
+      if (routeGeometry) {
+        if (typeof routeGeometry === 'string') {
           // Decode Google-encoded polyline manually (no Google lib needed)
-          path = decodePolyline(route.geometry);
-        } else if (Array.isArray(route.geometry)) {
-          path = (route.geometry as any[]).map((pt: any) =>
+          path = decodePolyline(routeGeometry);
+        } else if (Array.isArray(routeGeometry)) {
+          path = (routeGeometry as any[]).map((pt: any) =>
             Array.isArray(pt)
               ? [pt[1], pt[0]] as [number, number]   // GeoJSON [lng, lat]
               : [pt.lat ?? pt.latitude, pt.lng ?? pt.longitude] as [number, number]
@@ -322,7 +314,7 @@ export default function MapCanvas({
       if (!path.length && Array.isArray((route as any).coordinates)) {
         // Backend RouteResult.coordinates is [[lng, lat], ...]
         path = (route as any).coordinates.map(
-          (pt: [number, number]) => [pt[1], pt[0]] as [number, number]
+          (pt: number[]) => [pt[1], pt[0]] as [number, number]
         );
       }
 
@@ -381,7 +373,7 @@ export default function MapCanvas({
 
     if (routes.length > 0) {
       routes.forEach((route) => {
-        const pts = route.waypoints ?? route.heatmap_points ?? [];
+        const pts = (route as any).waypoints ?? (route as any).heatmap_points ?? [];
         pts.forEach((pt: any) => {
           const lat = pt.lat ?? pt[0];
           const lng = pt.lng ?? pt[1];
