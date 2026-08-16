@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Space_Grotesk, JetBrains_Mono } from 'next/font/google';
 import { Toaster } from 'react-hot-toast';
 import SOSButton from '@/components/ui/SOSButton';
+import PWAInstallBanner from '@/components/ui/PWAInstallBanner';
 import '@/styles/globals.css';
 
 const spaceGrotesk = Space_Grotesk({
@@ -125,6 +126,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </main>
 
         <SOSButton />
+        <PWAInstallBanner />
 
         <Toaster
           position="top-center"
