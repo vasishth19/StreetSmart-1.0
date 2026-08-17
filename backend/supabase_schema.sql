@@ -4,6 +4,8 @@ create table if not exists users (
   name text not null,
   email text unique not null,
   hashed_password text not null,
+  reset_token text,
+  reset_token_expires timestamptz,
   created_at timestamptz default now()
 );
 

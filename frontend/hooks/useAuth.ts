@@ -123,6 +123,54 @@ export function useAuth() {
     }
   }, [login]);
 
+  const forgotPassword = useCallback(async (email: string) => {
+    setLoading(true);
+    try {
+      let res: Response;
+      try {
+        res = await fetch(`${API}/auth/forgot-password`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ email }),
+        });
+      } catch (networkErr) {
+        throw new Error(`Cannot reach the server at ${API}. Is the backend running?`);
+      }
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail ?? 'Something went wrong');
+      }
+      return await res.json();
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const resetPassword = useCallback(async (token: string, newPassword: string) => {
+    setLoading(true);
+    try {
+      let res: Response;
+      try {
+        res = await fetch(`${API}/auth/reset-password`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ token, new_password: newPassword }),
+        });
+      } catch (networkErr) {
+        throw new Error(`Cannot reach the server at ${API}. Is the backend running?`);
+      }
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail ?? 'Could not reset password');
+      }
+      return await res.json();
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const logout = useCallback(() => {
     _token = null;
     _user  = null;
@@ -132,5 +180,5 @@ export function useAuth() {
     localStorage.removeItem('ss_user');
   }, []);
 
-  return { user, token, loading, login, signup, logout };
+  return { user, token, loading, login, signup, logout, forgotPassword, resetPassword };
 }

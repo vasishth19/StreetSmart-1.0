@@ -4,6 +4,9 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timedelta
 import hashlib
+import secrets
+import smtplib
+from email.mime.text import MIMEText
 from jose import JWTError, jwt
 import os
 from dotenv import load_dotenv
@@ -16,6 +19,11 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "streetsmart-secret-key-2026")
 ALGORITHM  = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
+RESET_TOKEN_EXPIRE_MINUTES  = 30
+
+SMTP_EMAIL        = os.getenv("SMTP_EMAIL", "")
+SMTP_APP_PASSWORD = os.getenv("SMTP_APP_PASSWORD", "")
+FRONTEND_URL       = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 oauth2 = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
@@ -23,6 +31,13 @@ class SignupRequest(BaseModel):
     name:     str
     email:    str
     password: str
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class ResetPasswordRequest(BaseModel):
+    token:        str
+    new_password: str
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -103,3 +118,88 @@ async def me(user=Depends(require_user)):
         id=user["id"], name=user["name"],
         email=user["email"], created_at=user["created_at"]
     )
+
+def send_reset_email(to_email: str, reset_link: str):
+    if not SMTP_EMAIL or not SMTP_APP_PASSWORD:
+        # Not configured — log instead of failing the request, so local/dev
+        # testing still works without a real email account set up.
+        print(f"[password reset] SMTP not configured. Link for {to_email}: {reset_link}")
+        return
+
+    body = (
+        f"Hi,\n\n"
+        f"We received a request to reset your StreetSmart password.\n"
+        f"Click the link below to set a new one — it expires in {RESET_TOKEN_EXPIRE_MINUTES} minutes:\n\n"
+        f"{reset_link}\n\n"
+        f"If you didn't request this, you can safely ignore this email.\n\n"
+        f"— StreetSmart"
+    )
+    msg = MIMEText(body)
+    msg["Subject"] = "Reset your StreetSmart password"
+    msg["From"]    = SMTP_EMAIL
+    msg["To"]      = to_email
+
+    with smtplib.SMTP("smtp.gmail.com", 587) as server:
+        server.starttls()
+        server.login(SMTP_EMAIL, SMTP_APP_PASSWORD)
+        server.send_message(msg)
+
+@router.post("/forgot-password")
+async def forgot_password(body: ForgotPasswordRequest):
+    user = get_by_email(body.email)
+
+    # Always return the same generic response whether or not the email is
+    # registered — prevents leaking which emails have accounts.
+    generic_response = {"message": "If that email is registered, a reset link has been sent."}
+
+    if not user:
+        return generic_response
+
+    token   = secrets.token_urlsafe(32)
+    expires = (datetime.utcnow() + timedelta(minutes=RESET_TOKEN_EXPIRE_MINUTES)).isoformat()
+
+    try:
+        supabase.table("users").update({
+            "reset_token":         token,
+            "reset_token_expires": expires,
+        }).eq("id", user["id"]).execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    reset_link = f"{FRONTEND_URL}/reset-password?token={token}"
+    try:
+        send_reset_email(user["email"], reset_link)
+    except Exception as e:
+        # Don't leak SMTP errors to the client — log server-side instead.
+        print(f"[password reset] Failed to send email: {e}")
+
+    return generic_response
+
+@router.post("/reset-password")
+async def reset_password(body: ResetPasswordRequest):
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password too short")
+
+    try:
+        r = supabase.table("users").select("*").eq("reset_token", body.token).execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    user = r.data[0] if r.data else None
+    if not user or not user.get("reset_token_expires"):
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+
+    expires_at = datetime.fromisoformat(user["reset_token_expires"])
+    if datetime.utcnow() > expires_at:
+        raise HTTPException(status_code=400, detail="This reset link has expired")
+
+    try:
+        supabase.table("users").update({
+            "hashed_password":     hash_pw(body.new_password),
+            "reset_token":         None,
+            "reset_token_expires": None,
+        }).eq("id", user["id"]).execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {"message": "Password updated successfully"}
