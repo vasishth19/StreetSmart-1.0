@@ -4,7 +4,11 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 const apiClient = axios.create({
   baseURL:  API_BASE,
-  timeout:  8000,
+  // 45s — Render's free tier puts the backend to sleep after 15 min idle,
+  // and waking it back up can take 30-50s. A short timeout here would
+  // abort every request during that cold-start window, even though the
+  // backend eventually responds fine.
+  timeout:  45000,
   headers:  { 'Content-Type': 'application/json' },
 });
 
