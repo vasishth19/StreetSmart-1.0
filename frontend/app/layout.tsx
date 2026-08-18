@@ -117,7 +117,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <nav style={{ position:'fixed', top:0, left:0, right:0, zIndex:900, background:'rgba(5,8,15,0.97)', borderBottom:'1px solid rgba(0,229,255,0.1)', backdropFilter:'blur(20px)', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 1.5rem', height:'56px' }}>
           <a href="/" style={{ fontFamily:'JetBrains Mono, monospace', fontWeight:900, fontSize:'1.1rem', color:'#00FF9C', textDecoration:'none', letterSpacing:'1px' }}>STREET<span style={{ color:'#00E5FF' }}>SMART</span></a>
           <div style={{ display:'flex', gap:'0.25rem', alignItems:'center', flexWrap:'wrap' }}>
-           <a href="/" style={{ fontFamily:'JetBrains Mono, monospace', fontWeight:900, fontSize:'1.1rem', color:'#00FF9C', textDecoration:'none', letterSpacing:'1px' }}>STREET<span style={{ color:'#00E5FF' }}>SMART</span></a>
+           <a href="/parking" style={{ fontFamily:'JetBrains Mono, monospace', fontWeight:700, fontSize:'0.85rem', color:'#8892B0', textDecoration:'none', letterSpacing:'0.5px', padding:'0.4rem 0.6rem' }}>PARKING</a>
           </div>
         </nav>
 

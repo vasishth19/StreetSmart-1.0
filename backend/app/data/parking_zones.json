@@ -1,0 +1,42 @@
+[
+  {
+    "id": "zone_cyberhub_ggn",
+    "name": "Cyber Hub",
+    "area": "DLF Cyber City, Gurugram",
+    "lat": 28.4950,
+    "lng": 77.0890,
+    "radius_m": 400,
+    "total_spots": 48,
+    "base_price_per_hour": 40
+  },
+  {
+    "id": "zone_mgroad_ggn",
+    "name": "MG Road Market",
+    "area": "MG Road, Gurugram",
+    "lat": 28.4783,
+    "lng": 77.0902,
+    "radius_m": 350,
+    "total_spots": 36,
+    "base_price_per_hour": 30
+  },
+  {
+    "id": "zone_cp_delhi",
+    "name": "Connaught Place",
+    "area": "Connaught Place, New Delhi",
+    "lat": 28.6315,
+    "lng": 77.2167,
+    "radius_m": 500,
+    "total_spots": 60,
+    "base_price_per_hour": 35
+  },
+  {
+    "id": "zone_indiranagar_blr",
+    "name": "Indiranagar 100ft Road",
+    "area": "Indiranagar, Bengaluru",
+    "lat": 12.9716,
+    "lng": 77.6412,
+    "radius_m": 350,
+    "total_spots": 40,
+    "base_price_per_hour": 30
+  }
+]

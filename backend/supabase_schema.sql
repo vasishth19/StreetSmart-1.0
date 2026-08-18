@@ -4,8 +4,6 @@ create table if not exists users (
   name text not null,
   email text unique not null,
   hashed_password text not null,
-  reset_token text,
-  reset_token_expires timestamptz,
   created_at timestamptz default now()
 );
 
@@ -32,6 +30,25 @@ create table if not exists reviews (
   user_name text,
   rating int not null,
   comment text not null,
+  created_at timestamptz default now()
+);
+
+-- Parking reservations (SIH1515 — realtime street parking)
+-- Zone/spot data itself is generated in-memory by the parking engine;
+-- this table is the audit/history log of actual bookings.
+create table if not exists parking_reservations (
+  id bigint generated always as identity primary key,
+  spot_id text not null,
+  zone_id text not null,
+  user_id bigint,
+  vehicle_number text not null,
+  vehicle_type text default 'car',
+  duration_minutes int not null,
+  price_per_hour double precision,
+  estimated_total double precision,
+  status text default 'confirmed',
+  reserved_at timestamptz default now(),
+  expires_at timestamptz,
   created_at timestamptz default now()
 );
 

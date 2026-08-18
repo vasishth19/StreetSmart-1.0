@@ -4,11 +4,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 const apiClient = axios.create({
   baseURL:  API_BASE,
-  // 45s — Render's free tier puts the backend to sleep after 15 min idle,
-  // and waking it back up can take 30-50s. A short timeout here would
-  // abort every request during that cold-start window, even though the
-  // backend eventually responds fine.
-  timeout:  45000,
+  timeout:  8000,
   headers:  { 'Content-Type': 'application/json' },
 });
 
@@ -131,6 +127,91 @@ export interface AnalyticsData {
   accessibility_trend: string;
 }
 
+// ─── Parking (SIH1515) types ─────────────────────────────────────
+
+export type VehicleType = 'two_wheeler' | 'car' | 'suv' | 'commercial';
+export type SpotStatus = 'available' | 'occupied' | 'reserved' | 'disabled';
+export type DemandLevel = 'low' | 'moderate' | 'high' | 'surge';
+
+export interface ParkingSpot {
+  id: string;
+  zone_id: string;
+  label: string;
+  lat: number;
+  lng: number;
+  vehicle_type: VehicleType;
+  status: SpotStatus;
+  base_price_per_hour: number;
+  current_price_per_hour: number;
+  covered: boolean;
+  ev_charging: boolean;
+  reserved_until?: string | null;
+  occupied_since?: string | null;
+}
+
+export interface ParkingZone {
+  id: string;
+  name: string;
+  area: string;
+  lat: number;
+  lng: number;
+  radius_m: number;
+  total_spots: number;
+  available_spots: number;
+  occupancy_rate: number;
+  demand_level: DemandLevel;
+  avg_price_per_hour: number;
+  surge_multiplier: number;
+}
+
+export interface PricingQuote {
+  spot_id: string;
+  base_price_per_hour: number;
+  price_per_hour: number;
+  surge_multiplier: number;
+  demand_level: DemandLevel;
+  occupancy_rate: number;
+  reasons: string[];
+}
+
+export interface ReservationRequest {
+  spot_id: string;
+  vehicle_number: string;
+  vehicle_type?: VehicleType;
+  duration_minutes?: number;
+  user_id?: string;
+}
+
+export interface ReservationResponse {
+  id: string;
+  spot_id: string;
+  zone_id: string;
+  status: string;
+  price_per_hour: number;
+  duration_minutes: number;
+  estimated_total: number;
+  reserved_at: string;
+  expires_at: string;
+  vehicle_number: string;
+}
+
+export interface ParkingAnalytics {
+  overview: {
+    total_zones: number;
+    total_spots: number;
+    available_spots: number;
+    overall_occupancy_rate: number;
+    avg_price_per_hour: number;
+  };
+  zone_breakdown: Array<{
+    id: string; name: string; occupancy_rate: number; demand_level: DemandLevel;
+    available_spots: number; total_spots: number; avg_price_per_hour: number;
+  }>;
+  hourly_occupancy: Array<{ hour: number; occupancy: number }>;
+  revenue_today: number;
+  demand_trend: string;
+}
+
 // ─── API Service ──────────────────────────────────────────────────
 
 export const apiService = {
@@ -182,6 +263,40 @@ export const apiService = {
 
   async healthCheck() {
     const res = await apiClient.get('/health');
+    return res.data;
+  },
+
+  // ── Parking (SIH1515) ─────────────────────────────────────────
+
+  async getParkingZones(): Promise<ParkingZone[]> {
+    const res = await apiClient.get<ParkingZone[]>('/parking/zones');
+    return res.data;
+  },
+
+  async getNearbyParkingSpots(lat: number, lng: number, radiusKm = 1.0, vehicleType?: VehicleType) {
+    const res = await apiClient.get('/parking/spots', {
+      params: { lat, lng, radius_km: radiusKm, vehicle_type: vehicleType },
+    });
+    return res.data as { spots: ParkingSpot[]; total_found: number; generated_at: string };
+  },
+
+  async getParkingPricing(spotId: string): Promise<PricingQuote> {
+    const res = await apiClient.get<PricingQuote>(`/parking/pricing/${spotId}`);
+    return res.data;
+  },
+
+  async reserveParkingSpot(request: ReservationRequest): Promise<ReservationResponse> {
+    const res = await apiClient.post<ReservationResponse>('/parking/reserve', request);
+    return res.data;
+  },
+
+  async cancelParkingReservation(spotId: string) {
+    const res = await apiClient.post(`/parking/reserve/${spotId}/cancel`);
+    return res.data;
+  },
+
+  async getParkingAnalytics(): Promise<ParkingAnalytics> {
+    const res = await apiClient.get<ParkingAnalytics>('/parking/analytics');
     return res.data;
   },
 };
