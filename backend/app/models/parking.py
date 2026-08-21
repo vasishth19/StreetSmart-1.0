@@ -47,6 +47,17 @@ class ParkingSpot(BaseModel):
     occupied_since: Optional[str] = None
 
 
+class FacilityType(str, Enum):
+    FORMAL   = "formal"    # gated/barriered — mall, IT park, railway station lot, multiplex
+    INFORMAL = "informal"  # open street/market — no physical barrier, chaotic by nature
+
+
+class DataSource(str, Enum):
+    OPERATOR_VERIFIED = "operator_verified"  # real barrier/ANPR count from the facility operator
+    COMMUNITY_REPORTED = "community_reported"  # crowdsourced check-in/check-out, confidence decays over time
+    SIMULATED_DEMO = "simulated_demo"  # procedurally generated for demo purposes — not live data
+
+
 class ParkingZone(BaseModel):
     id: str
     name: str
@@ -58,6 +69,8 @@ class ParkingZone(BaseModel):
     available_spots: int
     occupancy_rate: float  # 0-1
     demand_level: DemandLevel
+    facility_type: FacilityType = FacilityType.INFORMAL
+    data_source: DataSource = DataSource.SIMULATED_DEMO
     avg_price_per_hour: float
     surge_multiplier: float = 1.0
 

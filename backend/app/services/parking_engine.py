@@ -39,11 +39,20 @@ PEAK_HOURS = [(9, 11), (17, 20)]
 
 
 class ParkingEngine:
+    # Any request further than this from every known zone triggers a new
+    # zone to be generated on the spot, so the feature works everywhere,
+    # not just the 4 seeded demo cities.
+    AUTO_ZONE_TRIGGER_KM = 3.0
+    AUTO_ZONE_RADIUS_M   = 350
+    AUTO_ZONE_SPOTS      = 24
+    AUTO_ZONE_BASE_PRICE = 25.0  # ₹/hr — reasonable default street-parking rate
+
     def __init__(self):
         self._zones_meta: List[dict] = self._load_zones()
         self._spots: Dict[str, ParkingSpot] = {}
         self._zone_spot_ids: Dict[str, List[str]] = {}
-        self._generate_spots()
+        for zone in self._zones_meta:
+            self._generate_spots_for_zone(zone)
 
     # ── Setup ─────────────────────────────────────────────────────
 
@@ -55,44 +64,83 @@ class ParkingEngine:
             logger.error(f"Failed to load parking_zones.json: {e}")
             return []
 
-    def _generate_spots(self):
-        """Procedurally scatter spots around each zone centre and give
+    def _generate_spots_for_zone(self, zone: dict):
+        """Procedurally scatter spots around a zone centre and give
         each an initial status, weighted by the current time-of-day
-        demand so a fresh server boot still looks realistic."""
-        for zone in self._zones_meta:
-            rng = random.Random(zone["id"])  # deterministic per zone
-            ids = []
-            occ_prob = self._demand_curve(datetime.utcnow().hour)
-            for i in range(zone["total_spots"]):
-                spot_id = f"{zone['id']}_s{i+1:03d}"
-                bearing = rng.uniform(0, 2 * math.pi)
-                dist_m = rng.uniform(20, zone["radius_m"])
-                lat, lng = self._offset_latlng(zone["lat"], zone["lng"], bearing, dist_m)
+        demand so a fresh server boot still looks realistic. Works for
+        both the seeded demo zones and zones created on the fly for a
+        real user's location."""
+        rng = random.Random(zone["id"])  # deterministic per zone
+        ids = []
+        occ_prob = self._demand_curve(datetime.utcnow().hour)
+        for i in range(zone["total_spots"]):
+            spot_id = f"{zone['id']}_s{i+1:03d}"
+            bearing = rng.uniform(0, 2 * math.pi)
+            dist_m = rng.uniform(20, zone["radius_m"])
+            lat, lng = self._offset_latlng(zone["lat"], zone["lng"], bearing, dist_m)
 
-                vehicle_type = rng.choices(
-                    [VehicleType.CAR, VehicleType.TWO_WHEELER, VehicleType.SUV, VehicleType.COMMERCIAL],
-                    weights=[0.55, 0.30, 0.10, 0.05],
-                )[0]
-                is_occupied = rng.random() < occ_prob
-                base_price = zone["base_price_per_hour"] * (0.5 if vehicle_type == VehicleType.TWO_WHEELER else 1.0)
+            vehicle_type = rng.choices(
+                [VehicleType.CAR, VehicleType.TWO_WHEELER, VehicleType.SUV, VehicleType.COMMERCIAL],
+                weights=[0.55, 0.30, 0.10, 0.05],
+            )[0]
+            is_occupied = rng.random() < occ_prob
+            base_price = zone["base_price_per_hour"] * (0.5 if vehicle_type == VehicleType.TWO_WHEELER else 1.0)
 
-                spot = ParkingSpot(
-                    id=spot_id,
-                    zone_id=zone["id"],
-                    label=f"{zone['name']} · Spot {i+1}",
-                    lat=lat,
-                    lng=lng,
-                    vehicle_type=vehicle_type,
-                    status=SpotStatus.OCCUPIED if is_occupied else SpotStatus.AVAILABLE,
-                    base_price_per_hour=round(base_price, 2),
-                    current_price_per_hour=round(base_price, 2),
-                    covered=rng.random() < 0.15,
-                    ev_charging=rng.random() < 0.08,
-                    occupied_since=datetime.utcnow().isoformat() if is_occupied else None,
-                )
-                self._spots[spot_id] = spot
-                ids.append(spot_id)
-            self._zone_spot_ids[zone["id"]] = ids
+            spot = ParkingSpot(
+                id=spot_id,
+                zone_id=zone["id"],
+                label=f"{zone['name']} · Spot {i+1}",
+                lat=lat,
+                lng=lng,
+                vehicle_type=vehicle_type,
+                status=SpotStatus.OCCUPIED if is_occupied else SpotStatus.AVAILABLE,
+                base_price_per_hour=round(base_price, 2),
+                current_price_per_hour=round(base_price, 2),
+                covered=rng.random() < 0.15,
+                ev_charging=rng.random() < 0.08,
+                occupied_since=datetime.utcnow().isoformat() if is_occupied else None,
+            )
+            self._spots[spot_id] = spot
+            ids.append(spot_id)
+        self._zone_spot_ids[zone["id"]] = ids
+
+    def _ensure_zone_near(self, lat: float, lng: float):
+        """If no known zone (seeded or previously auto-generated) is
+        within AUTO_ZONE_TRIGGER_KM of this location, create one right
+        here — same generation logic as the seed zones, so the feature
+        works anywhere in the world instead of only near the 4 demo
+        cities. Deterministic per ~1.1km grid cell so repeated requests
+        near the same spot reuse the same zone instead of spawning a new
+        one on every call."""
+        for meta in self._zones_meta:
+            if self._distance_km(lat, lng, meta["lat"], meta["lng"]) <= self.AUTO_ZONE_TRIGGER_KM:
+                return  # already covered
+
+        grid_lat = round(lat, 2)
+        grid_lng = round(lng, 2)
+        zone_id = f"auto_{grid_lat}_{grid_lng}".replace("-", "n").replace(".", "p")
+
+        if any(z["id"] == zone_id for z in self._zones_meta):
+            return  # already generated for this grid cell
+
+        new_zone = {
+            "id": zone_id,
+            "name": "Nearby Street Parking",
+            "area": f"Auto-detected zone ({grid_lat:.2f}, {grid_lng:.2f})",
+            "lat": lat,
+            "lng": lng,
+            "radius_m": self.AUTO_ZONE_RADIUS_M,
+            "total_spots": self.AUTO_ZONE_SPOTS,
+            "base_price_per_hour": self.AUTO_ZONE_BASE_PRICE,
+            # Honest classification — we have no operator relationship for a
+            # zone we just invented on the fly, so it's always the
+            # crowdsourced tier, never claimed as operator-verified.
+            "facility_type": "informal",
+            "data_source":   "community_reported",
+        }
+        self._zones_meta.append(new_zone)
+        self._generate_spots_for_zone(new_zone)
+        logger.info(f"Auto-generated parking zone {zone_id} near ({lat}, {lng})")
 
     @staticmethod
     def _offset_latlng(lat: float, lng: float, bearing: float, dist_m: float) -> (float, float):
@@ -251,12 +299,16 @@ class ParkingEngine:
                 available_spots=available,
                 occupancy_rate=occupancy,
                 demand_level=self._demand_level(occupancy),
+                facility_type=meta.get("facility_type", "informal"),
+                data_source=meta.get("data_source", "community_reported"),
                 avg_price_per_hour=round(avg_price, 2),
                 surge_multiplier=self._surge_multiplier(occupancy, datetime.utcnow().hour),
             ))
         return zones
 
     def get_nearby_spots(self, lat: float, lng: float, radius_km: float = 1.0, limit: int = 60) -> List[ParkingSpot]:
+        self._ensure_zone_near(lat, lng)
+
         # Tick every zone within a generous range so results reflect live state
         for meta in self._zones_meta:
             if self._distance_km(lat, lng, meta["lat"], meta["lng"]) <= radius_km + (meta["radius_m"] / 1000):
