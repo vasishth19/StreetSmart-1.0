@@ -139,10 +139,22 @@ def send_reset_email(to_email: str, reset_link: str):
     msg["From"]    = SMTP_EMAIL
     msg["To"]      = to_email
 
-    with smtplib.SMTP("smtp.gmail.com", 587) as server:
-        server.starttls()
-        server.login(SMTP_EMAIL, SMTP_APP_PASSWORD)
-        server.send_message(msg)
+    print(f"[password reset] Attempting to send via {SMTP_EMAIL} -> {to_email}")
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.starttls()
+            server.login(SMTP_EMAIL, SMTP_APP_PASSWORD)
+            refused = server.send_message(msg)
+        if refused:
+            print(f"[password reset] Gmail refused delivery to: {refused}")
+        else:
+            print(f"[password reset] SUCCESS — Gmail accepted the message for {to_email}")
+    except smtplib.SMTPAuthenticationError as e:
+        print(f"[password reset] GMAIL AUTH FAILED — check SMTP_APP_PASSWORD is correct, no spaces: {e}")
+        raise
+    except Exception as e:
+        print(f"[password reset] SEND FAILED ({type(e).__name__}): {e}")
+        raise
 
 @router.post("/forgot-password")
 async def forgot_password(body: ForgotPasswordRequest):
@@ -153,6 +165,7 @@ async def forgot_password(body: ForgotPasswordRequest):
     generic_response = {"message": "If that email is registered, a reset link has been sent."}
 
     if not user:
+        print(f"[password reset] No account found for {body.email} — returning generic response")
         return generic_response
 
     token   = secrets.token_urlsafe(32)
