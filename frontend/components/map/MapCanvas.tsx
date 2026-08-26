@@ -22,6 +22,8 @@ interface MapCanvasProps {
   onRouteSelect: (route: RouteResult) => void;
   blackSpots?: BlackSpotReport[];
   showBlackSpots?: boolean;
+  restStops?: { id: number; lat: number; lng: number; type: string; name?: string }[];
+  livePosition?: { lat: number; lng: number; heading: number | null } | null;
 }
 
 export interface BlackSpotReport {
@@ -143,6 +145,35 @@ function makeBlackSpotIcon(L: any, color: string, emoji: string, elevated: boole
   });
 }
 
+function makeRestStopIcon(L: any, type: string): any {
+  const EMOJI: Record<string, string> = {
+    bench: '🪑', shelter: '🏠', rest_area: '🛑', toilets: '🚻', drinking_water: '🚰',
+  };
+  const emoji = EMOJI[type] || '🪑';
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="10" fill="#8892B0" opacity="0.18"/>
+      <circle cx="12" cy="12" r="8" fill="#0B1120" stroke="#8892B0" stroke-width="1.5"/>
+      <text x="12" y="16" text-anchor="middle" font-size="10">${emoji}</text>
+    </svg>`;
+  return L.divIcon({ html: svg, className: '', iconSize: [24, 24], iconAnchor: [12, 12] });
+}
+
+function makeLiveIcon(L: any, heading: number | null): any {
+  const rotate = heading != null ? `transform: rotate(${heading}deg);` : '';
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 34 34">
+      <circle cx="17" cy="17" r="15" fill="#00E5FF" opacity="0.3">
+        <animate attributeName="r" values="10;15;10" dur="1.6s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.5;0.05;0.5" dur="1.6s" repeatCount="indefinite"/>
+      </circle>
+      <g style="${rotate}transform-origin:17px 17px;">
+        <path d="M17 7 L23 24 L17 20 L11 24 Z" fill="#00E5FF" stroke="#05080F" stroke-width="1"/>
+      </g>
+    </svg>`;
+  return L.divIcon({ html: svg, className: '', iconSize: [34, 34], iconAnchor: [17, 17] });
+}
+
 // ─── Dark tile layer (matches app theme) ─────────────────────────────────────
 // Using CartoDB Dark Matter — free, no API key required
 const DARK_TILE_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
@@ -157,6 +188,8 @@ export default function MapCanvas({
   onRouteSelect,
   blackSpots = [],
   showBlackSpots = false,
+  restStops = [],
+  livePosition = null,
 }: MapCanvasProps) {
   const mapRef       = useRef<HTMLDivElement>(null);
   const mapInstance  = useRef<any>(null);
@@ -166,6 +199,8 @@ export default function MapCanvas({
   const destMarkerRef    = useRef<any>(null);
   const waypointMarkersRef = useRef<any[]>([]);
   const blackSpotMarkersRef = useRef<any[]>([]);
+  const restStopMarkersRef = useRef<any[]>([]);
+  const liveMarkerRef = useRef<any>(null);
   const pulseRef     = useRef<HTMLDivElement | null>(null);
 
   const [mapReady, setMapReady] = useState(false);
@@ -477,6 +512,55 @@ export default function MapCanvas({
       blackSpotMarkersRef.current = [];
     };
   }, [mapReady, blackSpots, showBlackSpots]);
+
+  // ── Real rest stops (benches/shelters/toilets/water) from OpenStreetMap ────
+  useEffect(() => {
+    if (!mapReady || !mapInstance.current) return;
+    const L = window.L;
+
+    restStopMarkersRef.current.forEach((m) => m.remove());
+    restStopMarkersRef.current = [];
+
+    restStops.forEach((stop) => {
+      const marker = L.marker([stop.lat, stop.lng], {
+        icon: makeRestStopIcon(L, stop.type),
+        zIndexOffset: 100,
+        title: stop.name || stop.type.replace(/_/g, ' '),
+      }).addTo(mapInstance.current);
+      marker.bindPopup(
+        `<div style="font-family:monospace;font-size:11px;color:#0B1020;text-transform:capitalize">${stop.name || stop.type.replace(/_/g, ' ')}</div>`
+      );
+      restStopMarkersRef.current.push(marker);
+    });
+
+    return () => {
+      restStopMarkersRef.current.forEach((m) => m.remove());
+      restStopMarkersRef.current = [];
+    };
+  }, [mapReady, restStops]);
+
+  // ── Real live GPS position (device's actual location, updates in real time) ─
+  useEffect(() => {
+    if (!mapReady || !mapInstance.current) return;
+    const L = window.L;
+
+    if (!livePosition) {
+      liveMarkerRef.current?.remove();
+      liveMarkerRef.current = null;
+      return;
+    }
+
+    if (liveMarkerRef.current) {
+      liveMarkerRef.current.setLatLng([livePosition.lat, livePosition.lng]);
+      liveMarkerRef.current.setIcon(makeLiveIcon(L, livePosition.heading));
+    } else {
+      liveMarkerRef.current = L.marker([livePosition.lat, livePosition.lng], {
+        icon: makeLiveIcon(L, livePosition.heading),
+        zIndexOffset: 1000,
+        title: 'Your live position',
+      }).addTo(mapInstance.current);
+    }
+  }, [mapReady, livePosition]);
 
   // ─────────────────────────────────────────────────────────────────────────
   if (error) {

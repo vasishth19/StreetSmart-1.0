@@ -21,17 +21,19 @@ function interpolateLine(from:{lat:number;lng:number}, to:{lat:number;lng:number
   });
 }
 
-// ✅ Real OSRM route with waypoint for deviation
+// ✅ Real OSRM route with waypoint for deviation — supports foot/bike/car,
+// all real routing profiles against the real road/path network.
 async function fetchOSRMRoute(
   origin:{lat:number;lng:number},
   destination:{lat:number;lng:number},
-  waypoint?:{lat:number;lng:number}
+  waypoint?:{lat:number;lng:number},
+  osrmProfile: 'foot'|'bike'|'car' = 'foot'
 ): Promise<{coordinates:number[][];distance_km:number;duration_min:number}|null> {
   try {
     let coords = `${origin.lng},${origin.lat}`;
     if (waypoint) coords += `;${waypoint.lng},${waypoint.lat}`;
     coords += `;${destination.lng},${destination.lat}`;
-    const url = `https://router.project-osrm.org/route/v1/foot/${coords}?geometries=geojson&overview=full&steps=true`;
+    const url = `https://router.project-osrm.org/route/v1/${osrmProfile}/${coords}?geometries=geojson&overview=full&steps=true`;
     const res = await fetch(url, {signal:AbortSignal.timeout(15000)});
     const data = await res.json();
     if (data.code==='Ok' && data.routes?.length>0) {
@@ -147,12 +149,16 @@ export function useRoutes() {
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string|null>(null);
 
-  const fetchRoutes = useCallback(async (request:RouteRequest) => {
+  const fetchRoutes = useCallback(async (request:RouteRequest, vehicleMode: string = 'pedestrian') => {
     setLoading(true);
     setError(null);
     const {origin, destination, preferences} = request;
     const profile = preferences?.user_profile ?? 'general';
     const seed    = Math.round((origin.lat+origin.lng)*1000)%100;
+
+    const osrmProfile: 'foot'|'bike'|'car' =
+      vehicleMode === 'pedestrian' ? 'foot' : 'car';
+    const isPriority = ['ambulance','fire','police'].includes(vehicleMode);
 
     try {
       // ✅ Fetch weather + hazards in parallel
@@ -163,13 +169,19 @@ export function useRoutes() {
 
       // ✅ 3 distinct real OSRM routes
       const waypoints   = getWaypoints(origin, destination);
-      const osrmResults = await Promise.all(waypoints.map(wp=>fetchOSRMRoute(origin, destination, wp)));
+      const osrmResults = await Promise.all(waypoints.map(wp=>fetchOSRMRoute(origin, destination, wp, osrmProfile)));
 
-      const templates = [
-        {name:'Safest Route',   description:'Maximum safety — well-lit, CCTV monitored', color:'#00FF9C', rank:1},
-        {name:'Balanced Route', description:'Optimal balance of safety and efficiency',   color:'#00E5FF', rank:2},
-        {name:'Quickest Safe',  description:'Fastest path meeting safety standards',      color:'#FFB020', rank:3},
-      ];
+      const templates = isPriority
+        ? [
+            {name:'Priority Corridor', description:'Fastest real road route — priority-flagged', color:'#FF3B3B', rank:1},
+            {name:'Alternate Corridor', description:'Backup route if primary is blocked',         color:'#FFB020', rank:2},
+            {name:'Widest Roads',       description:'Prefers arterial roads over side streets',   color:'#3B82F6', rank:3},
+          ]
+        : [
+            {name:'Safest Route',   description:'Maximum safety — well-lit, CCTV monitored', color:'#00FF9C', rank:1},
+            {name:'Balanced Route', description:'Optimal balance of safety and efficiency',   color:'#00E5FF', rank:2},
+            {name:'Quickest Safe',  description:'Fastest path meeting safety standards',      color:'#FFB020', rank:3},
+          ];
 
       const results:RouteResult[] = templates.map((t,i)=>{
         const osrm        = osrmResults[i];
@@ -197,7 +209,7 @@ export function useRoutes() {
         } as RouteResult;
       });
 
-      results.sort((a,b)=>b.scores.overall-a.scores.overall);
+      results.sort((a,b)=> isPriority ? a.duration_min-b.duration_min : b.scores.overall-a.scores.overall);
       results.forEach((r,i)=>{r.rank=i+1;});
       setRoutes(results);
 

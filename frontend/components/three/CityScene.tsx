@@ -5,6 +5,7 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { Stars, Float } from '@react-three/drei';
 import * as THREE from 'three';
 import { motion } from 'framer-motion';
+import { LightBeams } from './LightBeams';
 
 function createWindowTexture(floors: number, cols: number): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
@@ -75,6 +76,46 @@ function Antenna({ position }: { position:[number,number,number] }) {
   );
 }
 
+function SpireTower({ position }: { position: [number, number, number] }) {
+  const beaconRef = useRef<THREE.Mesh>(null);
+  const height = 26;
+  useFrame((s) => {
+    if (beaconRef.current) {
+      (beaconRef.current.material as THREE.MeshStandardMaterial).emissiveIntensity =
+        1.4 + Math.sin(s.clock.elapsedTime * 2.2) * 1.1;
+    }
+  });
+  const texture = useMemo(() => {
+    if (typeof document === 'undefined') return null;
+    return createWindowTexture(70, 8);
+  }, []);
+  const facadeMat = useMemo(
+    () =>
+      texture
+        ? new THREE.MeshStandardMaterial({
+            map: texture, emissiveMap: texture, emissive: new THREE.Color(1, 1, 1),
+            emissiveIntensity: 0.4, metalness: 0.55, roughness: 0.4,
+          })
+        : new THREE.MeshStandardMaterial({ color: '#050b14', metalness: 0.6, roughness: 0.35 }),
+    [texture]
+  );
+  return (
+    <group position={position}>
+      <mesh position={[0, height / 2, 0]} material={facadeMat}>
+        <cylinderGeometry args={[1.6, 2.6, height, 4]} />
+      </mesh>
+      <mesh position={[0, height + 3, 0]}>
+        <cylinderGeometry args={[0.05, 0.12, 6, 6]} />
+        <meshStandardMaterial color="#151f2e" metalness={0.9} roughness={0.2} />
+      </mesh>
+      <mesh ref={beaconRef} position={[0, height + 6.2, 0]}>
+        <sphereGeometry args={[0.14, 8, 8]} />
+        <meshStandardMaterial emissive="#00E5FF" emissiveIntensity={1.6} color="#00E5FF" />
+      </mesh>
+    </group>
+  );
+}
+
 function RoadLights() {
   const pts = useMemo(() => {
     const l: {x:number,z:number,id:string}[] = [];
@@ -103,12 +144,27 @@ function CityParticles() {
 }
 
 function AutoCamera() {
-  useFrame(s=>{
-    const t=s.clock.elapsedTime*0.022;
-    s.camera.position.x=Math.sin(t)*5;
-    s.camera.position.y=13+Math.sin(t*0.35)*1.5;
-    s.camera.position.z=30+Math.cos(t)*4;
-    s.camera.lookAt(0,5,0);
+  useFrame((s) => {
+    const cam = s.camera;
+    const cycle = 46; // seconds for one full cinematic loop
+    const t = (s.clock.elapsedTime % cycle) / cycle; // 0 → 1
+    // ease in/out so the descent doesn't feel linear/robotic
+    const ease = 0.5 - 0.5 * Math.cos(t * Math.PI * 2);
+
+    // Wide, high establishing orbit that swoops down and in toward the
+    // spire, then rises back out — a continuous, seamless loop.
+    const radius = 34 - ease * 14;
+    const angle = t * Math.PI * 2 * 0.6 + Math.PI * 0.15;
+    const height = 20 - ease * 10 + Math.sin(t * Math.PI * 4) * 0.6;
+
+    cam.position.x = Math.sin(angle) * radius;
+    cam.position.z = Math.cos(angle) * radius;
+    cam.position.y = height;
+
+    // subtle handheld-drone drift + banking roll for a realistic feel
+    const drift = Math.sin(s.clock.elapsedTime * 0.4) * 0.15;
+    cam.up.set(Math.sin(drift), Math.cos(drift), 0);
+    cam.lookAt(0, 6 + Math.sin(t * Math.PI * 2) * 1.5, 0);
   });
   return null;
 }
@@ -118,7 +174,7 @@ function SceneContent() {
     const b:any[]=[],a:any[]=[];
     for(let x=-22;x<=22;x+=3.5){
       for(let z=-22;z<=22;z+=3.5){
-        if(Math.random()>0.2){
+        if(Math.random()>0.2 && Math.hypot(x-0, z-(-2))>4.5){
           const sky=Math.random()>.75, tall=Math.random()>.5;
           const h=sky?12+Math.random()*18:tall?6+Math.random()*8:2+Math.random()*4;
           const w=1.1+Math.random()*1.7, d=1.1+Math.random()*1.7;
@@ -146,6 +202,8 @@ function SceneContent() {
       <gridHelper args={[80,40,'#081828','#050f1a']} position={[0,-0.05,0]}/>
       <RoadLights/>
       <CityParticles/>
+      <SpireTower position={[0, 0, -2]} />
+      <LightBeams />
 
       {buildings.map(b=>(
         <Building key={b.id} position={b.pos} height={b.height} width={b.width} depth={b.depth}/>

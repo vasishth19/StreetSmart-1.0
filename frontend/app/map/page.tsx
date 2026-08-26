@@ -16,14 +16,22 @@ import NeonCard from '@/components/ui/NeonCard';
 import RouteCard from '@/components/ui/RouteCard';
 import HUDPanel from '@/components/ui/HUDPanel';
 import PreferenceSelector from '@/components/ui/PreferenceSelector';
+import VehicleModeSelector from '@/components/ui/VehicleModeSelector';
 import { useRoutes } from '@/hooks/useRoutes';
 import { useSpeech } from '@/hooks/useSpeech';
+import { useLiveTracking } from '@/hooks/useLiveTracking';
+import { fetchRestStopsAlongRoute, type RestStop } from '@/services/reststops';
 import { apiService } from '@/services/api';
 import type { RouteResult } from '@/services/api';
 import type { BlackSpotReport } from '@/components/map/MapCanvas';
 import toast from 'react-hot-toast';
 
-const MapCanvas = dynamic(() => import('@/components/map/MapCanvas'), { ssr: false });
+const LeafletMapCanvas = dynamic(() => import('@/components/map/MapCanvas'), { ssr: false });
+const GoogleMapCanvas  = dynamic(() => import('@/components/map/GoogleMapCanvas'), { ssr: false });
+// ✅ Real Google Maps is used automatically once NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+// is set in your .env — no code change needed to switch. Falls back to the
+// free OpenStreetMap-based map until then.
+const MapCanvas = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ? GoogleMapCanvas : LeafletMapCanvas;
 
 // ✅ FIXED: Neutral India center — GPS will always override this
 // No hardcoded city — works worldwide
@@ -336,17 +344,34 @@ export default function MapPage() {
 
   const { listening, supported: voiceOk, startListening, stopListening } = useVoiceRecognition(handleVoiceResult);
 
+  const [vehicleMode, setVehicleMode] = useState('pedestrian');
+  const [restStops, setRestStops] = useState<RestStop[]>([]);
+  const { position: livePosition, tracking: liveTracking, error: liveTrackError, start: startLiveTracking, stop: stopLiveTracking } = useLiveTracking();
+
   const handleFindRoutes = useCallback(async () => {
     if (!destText.trim()) { toast.error('Please enter a destination'); return; }
     clearRoutes();
     setSelectedRoute(null);
     setInstructionIdx(0);
+    setRestStops([]);
     await fetchRoutes({
       origin:      originCoords,
       destination: destCoords,
-      preferences: { user_profile: selectedProfile as any, transport_mode: 'walking' },
+      preferences: { user_profile: selectedProfile as any, transport_mode: vehicleMode === 'pedestrian' ? 'walking' : 'driving' },
+    }, vehicleMode);
+  }, [originCoords, destCoords, selectedProfile, vehicleMode, fetchRoutes, clearRoutes, destText]);
+
+  // ✅ Real rest stops (benches/shelters/toilets/water) fetched live from
+  // OpenStreetMap once a route is selected — only for pedestrian mode,
+  // since rest stops matter for people walking, not vehicles.
+  useEffect(() => {
+    if (vehicleMode !== 'pedestrian' || !selectedRoute?.coordinates?.length) { setRestStops([]); return; }
+    let cancelled = false;
+    fetchRestStopsAlongRoute(selectedRoute.coordinates).then((stops) => {
+      if (!cancelled) setRestStops(stops);
     });
-  }, [originCoords, destCoords, selectedProfile, fetchRoutes, clearRoutes, destText]);
+    return () => { cancelled = true; };
+  }, [selectedRoute, vehicleMode]);
 
   useEffect(() => {
     if (routes.length > 0 && !selectedRoute) {
@@ -492,9 +517,41 @@ export default function MapPage() {
                   </div>
                 </NeonCard>
 
-                <NeonCard color="#00E5FF">
-                  <p className="text-[10px] font-mono text-[#00E5FF] font-semibold tracking-wider mb-3">USER PROFILE</p>
-                  <PreferenceSelector selected={selectedProfile} onChange={setSelectedProfile} />
+                <NeonCard color="#FFB020">
+                  <p className="text-[10px] font-mono text-[#FFB020] font-semibold tracking-wider mb-3">TRAVEL MODE</p>
+                  <VehicleModeSelector selected={vehicleMode} onChange={setVehicleMode} />
+                </NeonCard>
+
+                {vehicleMode === 'pedestrian' && (
+                  <NeonCard color="#00E5FF">
+                    <p className="text-[10px] font-mono text-[#00E5FF] font-semibold tracking-wider mb-3">USER PROFILE</p>
+                    <PreferenceSelector selected={selectedProfile} onChange={setSelectedProfile} />
+                  </NeonCard>
+                )}
+
+                <NeonCard color={liveTracking ? '#00FF9C' : '#8892B0'}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] font-mono text-[#8892B0] font-semibold tracking-wider">LIVE GPS TRACKING</p>
+                      <p className="text-[9px] text-[#4A5568] mt-0.5">
+                        {liveTracking
+                          ? livePosition
+                            ? `${livePosition.speedKmh ?? '—'} km/h · ±${livePosition.accuracyM}m accuracy`
+                            : 'Waiting for GPS fix...'
+                          : 'Track your real device location on the map'}
+                      </p>
+                      {liveTrackError && <p className="text-[9px] text-[#FF3B3B] mt-0.5">{liveTrackError}</p>}
+                    </div>
+                    <button
+                      onClick={() => (liveTracking ? stopLiveTracking() : startLiveTracking())}
+                      className="text-[10px] font-mono px-3 py-1.5 rounded-lg border transition-colors"
+                      style={liveTracking
+                        ? { borderColor: '#00FF9C50', color: '#00FF9C', background: '#00FF9C10' }
+                        : { borderColor: '#8892B030', color: '#8892B0' }}
+                    >
+                      {liveTracking ? 'STOP' : 'START'}
+                    </button>
+                  </div>
                 </NeonCard>
 
                 <AnimatePresence>
@@ -575,6 +632,7 @@ export default function MapPage() {
           <MapCanvas selectedRoute={selectedRoute} routes={routes} showHeatmap={showHeatmap}
             origin={originCoords} destination={destCoords}
             blackSpots={blackSpots} showBlackSpots={showBlackSpots}
+            restStops={restStops} livePosition={livePosition}
             onRouteSelect={(r) => { setSelectedRoute(r); if (audioEnabled) speak(`${r.name} selected.`); }} />
 
           {selectedRoute && !a11y && (

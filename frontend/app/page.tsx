@@ -55,14 +55,10 @@ const STATS = [
 ];
 
 const QUICK_LINKS = [
-  { href: '/map',       label: 'Navigate',     desc: 'Get a safety-scored route',  icon: '🗺️', color: '#00FF9C' },
-  { href: '/report',    label: 'Civic Report', desc: 'Flag an unsafe area',        icon: '🚨', color: '#FF3B3B' },
-  { href: '/reviews',   label: 'Reviews',      desc: 'Rate your last route',       icon: '⭐', color: '#FFB020' },
-  { href: '/dashboard', label: 'Dashboard',    desc: 'City safety analytics',      icon: '📊', color: '#00E5FF' },
-  { href: '/profile',   label: 'Profile',      desc: 'Safety prefs + contacts',    icon: '👤', color: '#B388FF' },
-  { href: '/admin',     label: 'Admin Panel',  desc: 'Moderate reports & reviews', icon: '🔐', color: '#9B5DE5' },
-  { href: '/login',     label: 'Sign In',      desc: 'Access your account',        icon: '🔑', color: '#8892B0' },
-  { href: '/signup',    label: 'Sign Up',      desc: 'Join StreetSmart free',      icon: '✨', color: '#00FF9C' },
+  { href: '/map',       label: 'Navigate',  desc: 'Safety-scored routes, live voice guidance',       icon: '🗺️', color: '#00FF9C' },
+  { href: '/dashboard', label: 'Dashboard', desc: 'City analytics · your profile · your reviews',    icon: '📊', color: '#00E5FF' },
+  { href: '/community', label: 'Community', desc: 'Civic reports · admin moderation',                icon: '🚨', color: '#FF3B3B' },
+  { href: '/account',   label: 'Account',   desc: 'Sign in or create your account',                  icon: '🔑', color: '#B388FF' },
 ];
 
 export default function LandingPage() {
@@ -87,7 +83,9 @@ export default function LandingPage() {
         </div>
 
         <div className="absolute inset-0 z-10 pointer-events-none"
-          style={{ background: 'linear-gradient(to bottom, rgba(5,8,15,0.65) 0%, rgba(5,8,15,0.2) 40%, rgba(5,8,15,0.5) 70%, rgba(5,8,15,1) 100%)' }} />
+          style={{ background: 'linear-gradient(to bottom, rgba(5,8,15,0.75) 0%, rgba(5,8,15,0.35) 30%, rgba(5,8,15,0.45) 55%, rgba(5,8,15,0.75) 78%, rgba(5,8,15,1) 100%)' }} />
+        <div className="absolute inset-0 z-10 pointer-events-none"
+          style={{ background: 'radial-gradient(ellipse 60% 50% at 50% 46%, rgba(5,8,15,0.55) 0%, rgba(5,8,15,0) 70%)' }} />
 
         {/* Nav */}
         <nav className="relative z-20 flex items-center justify-between px-6 py-4 lg:px-12">
@@ -98,8 +96,8 @@ export default function LandingPage() {
           </motion.div>
           <motion.div initial={{ opacity:0, x:20 }} animate={{ opacity:1, x:0 }} transition={{ duration:0.5 }} className="flex items-center gap-2">
             <Link href="/map"><GlowButton color="cyan" size="sm">Launch Navigator</GlowButton></Link>
-            <Link href="/login"><button className="hidden sm:block text-sm text-[#CCD6F6] hover:text-[#00E5FF] transition-colors px-4 py-2">Sign In</button></Link>
-            <Link href="/admin"><button className="hidden md:block text-xs text-[#9B5DE5] hover:text-[#B388FF] transition-colors px-3 py-2 border border-[#9B5DE5]/30 rounded-lg font-mono">🔐 ADMIN</button></Link>
+            <Link href="/account?tab=signin"><button className="hidden sm:block text-sm text-[#CCD6F6] hover:text-[#00E5FF] transition-colors px-4 py-2">Sign In</button></Link>
+            <Link href="/community?tab=admin"><button className="hidden md:block text-xs text-[#9B5DE5] hover:text-[#B388FF] transition-colors px-3 py-2 border border-[#9B5DE5]/30 rounded-lg font-mono">🔐 ADMIN</button></Link>
           </motion.div>
         </nav>
 
@@ -169,7 +167,7 @@ export default function LandingPage() {
                       <Navigation className="w-4 h-4 mr-2" />Start Navigating<ChevronRight className="w-4 h-4 ml-1" />
                     </GlowButton>
                   </Link>
-                  <Link href="/signup">
+                  <Link href="/account?tab=signup">
                     <GlowButton color="cyan" size="lg" variant="outline" className="min-w-48">
                       <User className="w-4 h-4 mr-2" />Create Account
                     </GlowButton>
@@ -291,10 +289,10 @@ export default function LandingPage() {
               Create your account and navigate safer today. Already have an account? Sign in below.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
-              <Link href="/signup"><GlowButton color="green" size="lg"><User className="w-4 h-4 mr-2" />Create Account</GlowButton></Link>
-              <Link href="/login"><GlowButton color="cyan" size="lg" variant="outline"><Lock className="w-4 h-4 mr-2" />Sign In</GlowButton></Link>
+              <Link href="/account?tab=signup"><GlowButton color="green" size="lg"><User className="w-4 h-4 mr-2" />Create Account</GlowButton></Link>
+              <Link href="/account?tab=signin"><GlowButton color="cyan" size="lg" variant="outline"><Lock className="w-4 h-4 mr-2" />Sign In</GlowButton></Link>
             </div>
-            <Link href="/admin">
+            <Link href="/community?tab=admin">
               <motion.div whileHover={{ scale:1.03 }}
                 className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-[#9B5DE5]/30 bg-[#9B5DE5]/05 text-[#9B5DE5] text-sm font-mono cursor-pointer transition-all hover:bg-[#9B5DE5]/15">
                 🔐 Admin / Owner Access Panel
@@ -309,9 +307,9 @@ export default function LandingPage() {
         <motion.div initial={{ opacity:0, y:20 }} whileInView={{ opacity:1, y:0 }} viewport={{ once:true }}>
           <div className="flex flex-wrap gap-3 justify-center">
             <Link href="/map"><GlowButton color="green" size="md"><Map className="w-4 h-4 mr-2" />Open Navigator</GlowButton></Link>
-            <Link href="/report"><GlowButton color="amber" size="md" variant="outline"><AlertTriangle className="w-4 h-4 mr-2" />Report Issue</GlowButton></Link>
-            <Link href="/dashboard"><GlowButton color="cyan" size="md" variant="outline"><BarChart3 className="w-4 h-4 mr-2" />Dashboard</GlowButton></Link>
-            <Link href="/reviews"><GlowButton color="purple" size="md" variant="outline"><Star className="w-4 h-4 mr-2" />Reviews</GlowButton></Link>
+            <Link href="/community?tab=report"><GlowButton color="amber" size="md" variant="outline"><AlertTriangle className="w-4 h-4 mr-2" />Report Issue</GlowButton></Link>
+            <Link href="/dashboard?tab=overview"><GlowButton color="cyan" size="md" variant="outline"><BarChart3 className="w-4 h-4 mr-2" />Dashboard</GlowButton></Link>
+            <Link href="/dashboard?tab=reviews"><GlowButton color="purple" size="md" variant="outline"><Star className="w-4 h-4 mr-2" />Reviews</GlowButton></Link>
           </div>
         </motion.div>
       </section>
