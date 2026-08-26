@@ -1,12 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timedelta
 import hashlib
 import secrets
-import smtplib
-from email.mime.text import MIMEText
+import httpx
 from jose import JWTError, jwt
 import os
 from dotenv import load_dotenv
@@ -21,9 +20,14 @@ ALGORITHM  = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 RESET_TOKEN_EXPIRE_MINUTES  = 30
 
-SMTP_EMAIL        = os.getenv("SMTP_EMAIL", "")
-SMTP_APP_PASSWORD = os.getenv("SMTP_APP_PASSWORD", "")
-FRONTEND_URL       = os.getenv("FRONTEND_URL", "http://localhost:3000")
+# ✅ Render's free tier blocks outbound SMTP ports (25/465/587) platform-wide,
+# so raw smtplib can never work there regardless of credentials. Resend sends
+# over HTTPS instead, which isn't blocked. Free tier: 3,000 emails/month.
+# Get a key at https://resend.com — RESEND_FROM defaults to Resend's shared
+# test sender, which works immediately with no domain setup.
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+RESEND_FROM    = os.getenv("RESEND_FROM", "StreetSmart <onboarding@resend.dev>")
+FRONTEND_URL   = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 oauth2 = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
@@ -120,44 +124,44 @@ async def me(user=Depends(require_user)):
     )
 
 def send_reset_email(to_email: str, reset_link: str):
-    if not SMTP_EMAIL or not SMTP_APP_PASSWORD:
+    if not RESEND_API_KEY:
         # Not configured — log instead of failing the request, so local/dev
         # testing still works without a real email account set up.
-        print(f"[password reset] SMTP not configured. Link for {to_email}: {reset_link}")
+        print(f"[password reset] RESEND_API_KEY not set. Link for {to_email}: {reset_link}")
         return
 
-    body = (
-        f"Hi,\n\n"
-        f"We received a request to reset your StreetSmart password.\n"
-        f"Click the link below to set a new one — it expires in {RESET_TOKEN_EXPIRE_MINUTES} minutes:\n\n"
-        f"{reset_link}\n\n"
-        f"If you didn't request this, you can safely ignore this email.\n\n"
-        f"— StreetSmart"
+    html_body = (
+        f"<p>Hi,</p>"
+        f"<p>We received a request to reset your StreetSmart password. "
+        f"Click the link below to set a new one — it expires in {RESET_TOKEN_EXPIRE_MINUTES} minutes:</p>"
+        f'<p><a href="{reset_link}">{reset_link}</a></p>'
+        f"<p>If you didn't request this, you can safely ignore this email.</p>"
+        f"<p>— StreetSmart</p>"
     )
-    msg = MIMEText(body)
-    msg["Subject"] = "Reset your StreetSmart password"
-    msg["From"]    = SMTP_EMAIL
-    msg["To"]      = to_email
 
-    print(f"[password reset] Attempting to send via {SMTP_EMAIL} -> {to_email}")
+    print(f"[password reset] Attempting to send via Resend -> {to_email}")
     try:
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
-            server.starttls()
-            server.login(SMTP_EMAIL, SMTP_APP_PASSWORD)
-            refused = server.send_message(msg)
-        if refused:
-            print(f"[password reset] Gmail refused delivery to: {refused}")
+        resp = httpx.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
+            json={
+                "from":    RESEND_FROM,
+                "to":      [to_email],
+                "subject": "Reset your StreetSmart password",
+                "html":    html_body,
+            },
+            timeout=10,
+        )
+        if resp.status_code in (200, 201, 202):
+            print(f"[password reset] SUCCESS — Resend accepted the message for {to_email}")
         else:
-            print(f"[password reset] SUCCESS — Gmail accepted the message for {to_email}")
-    except smtplib.SMTPAuthenticationError as e:
-        print(f"[password reset] GMAIL AUTH FAILED — check SMTP_APP_PASSWORD is correct, no spaces: {e}")
-        raise
+            print(f"[password reset] Resend rejected the request ({resp.status_code}): {resp.text}")
     except Exception as e:
         print(f"[password reset] SEND FAILED ({type(e).__name__}): {e}")
         raise
 
 @router.post("/forgot-password")
-async def forgot_password(body: ForgotPasswordRequest):
+async def forgot_password(body: ForgotPasswordRequest, background_tasks: BackgroundTasks):
     user = get_by_email(body.email)
 
     # Always return the same generic response whether or not the email is
@@ -180,11 +184,10 @@ async def forgot_password(body: ForgotPasswordRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
     reset_link = f"{FRONTEND_URL}/reset-password?token={token}"
-    try:
-        send_reset_email(user["email"], reset_link)
-    except Exception as e:
-        # Don't leak SMTP errors to the client — log server-side instead.
-        print(f"[password reset] Failed to send email: {e}")
+    # ✅ Runs AFTER the response is already sent to the browser — the
+    # frontend no longer waits on Gmail's SMTP handshake, which is what
+    # was causing the 8-second timeout.
+    background_tasks.add_task(send_reset_email, user["email"], reset_link)
 
     return generic_response
 
