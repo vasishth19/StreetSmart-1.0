@@ -9,7 +9,7 @@ import Link from 'next/link';
 import {
   Shield, Navigation, Accessibility, Volume2,
   ChevronRight, Map, BarChart3, AlertTriangle,
-  Star, User, Lock, FileText,
+  Star, User, Lock, FileText, ParkingCircle,
 } from 'lucide-react';
 import GlowButton from '@/components/ui/GlowButton';
 import NeonCard    from '@/components/ui/NeonCard';
