@@ -48,10 +48,13 @@ async def get_nearby_spots(
     lng: float = Query(..., description="Longitude to search around"),
     radius_km: float = Query(default=1.0, ge=0.1, le=5.0),
     vehicle_type: str = Query(default=None, description="Filter: car, two_wheeler, suv, commercial"),
+    area_name: str = Query(default=None, description="Human-readable place name (e.g. passed from the navigator's destination) used to label a freshly generated zone"),
 ):
-    """Nearby spots ranked by availability then distance."""
+    """Nearby spots ranked by availability then distance. Works anywhere —
+    if no zone exists nearby, one is generated on the fly around the
+    searched location (see parking_engine._ensure_zone_near)."""
     try:
-        spots = parking_engine.get_nearby_spots(lat, lng, radius_km)
+        spots = parking_engine.get_nearby_spots(lat, lng, radius_km, area_name=area_name)
         if vehicle_type:
             spots = [s for s in spots if s.vehicle_type.value == vehicle_type]
         return {

@@ -273,9 +273,11 @@ export const apiService = {
     return res.data;
   },
 
-  async getNearbyParkingSpots(lat: number, lng: number, radiusKm = 1.0, vehicleType?: VehicleType) {
+  async getNearbyParkingSpots(
+    lat: number, lng: number, radiusKm = 1.0, vehicleType?: VehicleType, areaName?: string
+  ) {
     const res = await apiClient.get('/parking/spots', {
-      params: { lat, lng, radius_km: radiusKm, vehicle_type: vehicleType },
+      params: { lat, lng, radius_km: radiusKm, vehicle_type: vehicleType, area_name: areaName },
     });
     return res.data as { spots: ParkingSpot[]; total_found: number; generated_at: string };
   },

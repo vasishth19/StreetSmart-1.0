@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { ArrowLeft, MapPin, TrendingUp, X, CheckCircle, Car } from 'lucide-react';
 import toast from 'react-hot-toast';
 import NeonCard from '@/components/ui/NeonCard';
@@ -34,8 +35,30 @@ function distanceKm(lat1: number, lng1: number, lat2: number, lng2: number) {
 }
 
 export default function ParkingPage() {
+  return (
+    <Suspense fallback={null}>
+      <ParkingPageInner />
+    </Suspense>
+  );
+}
+
+function ParkingPageInner() {
   const { lat, lng, error: geoError, getCurrentPosition } = useGeolocation();
-  const center = lat && lng ? { lat, lng } : DEFAULT_CENTER;
+
+  // Arriving from "Find Parking Near Destination" on the navigator passes the
+  // route's own real destination coords straight through — same point OSRM
+  // just routed you to, not a second, separate lookup.
+  const searchParams = useSearchParams();
+  const destLat = searchParams.get('lat');
+  const destLng = searchParams.get('lng');
+  const destName = searchParams.get('name');
+  const fromNavigator = destLat && destLng;
+
+  const center = fromNavigator
+    ? { lat: parseFloat(destLat), lng: parseFloat(destLng) }
+    : lat && lng
+    ? { lat, lng }
+    : DEFAULT_CENTER;
 
   const [zones, setZones] = useState<ParkingZone[]>([]);
   const [vehicleFilter, setVehicleFilter] = useState<VehicleType | undefined>(undefined);
@@ -44,6 +67,7 @@ export default function ParkingPage() {
     lng: center.lng,
     radiusKm: 1.5,
     vehicleType: vehicleFilter,
+    areaName: destName || undefined,
   });
 
   const [selectedSpot, setSelectedSpot] = useState<ParkingSpot | null>(null);
@@ -113,11 +137,15 @@ export default function ParkingPage() {
         </div>
       </div>
 
-      {geoError && (
+      {fromNavigator ? (
+        <div className="mb-4 text-xs text-[#00FF9C] font-mono">
+          📍 Showing parking near {destName || 'your destination'} — carried over from your route
+        </div>
+      ) : geoError ? (
         <div className="mb-4 text-xs text-[#FFB020] font-mono">
           {geoError} — showing spots near Cyber Hub, Gurugram instead.
         </div>
-      )}
+      ) : null}
 
       {/* Zone overview */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">

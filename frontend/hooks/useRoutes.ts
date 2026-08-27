@@ -178,9 +178,9 @@ export function useRoutes() {
             {name:'Widest Roads',       description:'Prefers arterial roads over side streets',   color:'#3B82F6', rank:3},
           ]
         : [
-            {name:'Safest Route',   description:'Maximum safety — well-lit, CCTV monitored', color:'#00FF9C', rank:1},
-            {name:'Balanced Route', description:'Optimal balance of safety and efficiency',   color:'#00E5FF', rank:2},
-            {name:'Quickest Safe',  description:'Fastest path meeting safety standards',      color:'#FFB020', rank:3},
+            {name:'Women Safe Route', description:'Max safety — well-lit, CCTV monitored, high safety score', color:'#FF3BAE', rank:1},
+            {name:'Accessible Route',  description:'Step-free, smooth surfaces for wheelchair/elderly use',    color:'#3B82F6', rank:2},
+            {name:'Smart Route',       description:'Optimized balance of safety and travel time',              color:'#00FF9C', rank:3},
           ];
 
       const results:RouteResult[] = templates.map((t,i)=>{
@@ -217,15 +217,15 @@ export function useRoutes() {
       // Mock fallback
       const dist = haversine(origin.lat,origin.lng,destination.lat,destination.lng);
       const mock = [
-        {name:'Safest Route',   color:'#00FF9C',rank:1,dev:0},
-        {name:'Balanced Route', color:'#00E5FF',rank:2,dev:0.6},
-        {name:'Quickest Safe',  color:'#FFB020',rank:3,dev:-0.6},
+        {name:'Women Safe Route', color:'#FF3BAE',rank:1,dev:0},
+        {name:'Accessible Route', color:'#3B82F6',rank:2,dev:0.6},
+        {name:'Smart Route',      color:'#00FF9C',rank:3,dev:-0.6},
       ].map((t,i)=>{
         const d = parseFloat((dist*(1+i*0.1)).toFixed(2));
         const scores = scoreRoute(i,profile,seed);
         return {
           id:`mock-${i}`, name:t.name,
-          description:['Max safety','Balanced','Fastest safe'][i],
+          description:['Max safety','Step-free & smooth','Optimized balance'][i],
           coordinates:interpolateLine(origin,destination,15,t.dev),
           segments:[], scores,
           distance_km:d, duration_min:Math.round(d*12),

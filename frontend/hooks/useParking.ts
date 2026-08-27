@@ -6,6 +6,7 @@ interface UseParkingOptions {
   lng?: number;
   radiusKm?: number;
   vehicleType?: VehicleType;
+  areaName?: string; // human-readable place name (e.g. passed from the navigator's destination)
   pollMs?: number; // set to 0 to disable polling
 }
 
@@ -18,6 +19,7 @@ export function useParking({
   lng,
   radiusKm = 1.0,
   vehicleType,
+  areaName,
   pollMs = 15000,
 }: UseParkingOptions) {
   const [spots, setSpots] = useState<ParkingSpot[]>([]);
@@ -28,7 +30,7 @@ export function useParking({
     if (lat === undefined || lng === undefined) return;
     setLoading(true);
     try {
-      const data = await apiService.getNearbyParkingSpots(lat, lng, radiusKm, vehicleType);
+      const data = await apiService.getNearbyParkingSpots(lat, lng, radiusKm, vehicleType, areaName);
       setSpots(data.spots || []);
       setError(null);
     } catch (e: any) {
@@ -36,7 +38,7 @@ export function useParking({
     } finally {
       setLoading(false);
     }
-  }, [lat, lng, radiusKm, vehicleType]);
+  }, [lat, lng, radiusKm, vehicleType, areaName]);
 
   useEffect(() => {
     refresh();

@@ -567,6 +567,17 @@ export default function MapPage() {
                             if (audioEnabled) speak(`${route.name}. Safety score ${route.scores.overall.toFixed(0)}.`);
                           }} />
                       ))}
+
+                      {/* Parking search reuses this route's own real destination
+                          coordinates — same OSRM-geocoded point, not a separate lookup */}
+                      <Link
+                        href={`/parking?lat=${destCoords.lat}&lng=${destCoords.lng}&name=${encodeURIComponent(destText || 'Destination')}`}
+                        className="block"
+                      >
+                        <GlowButton color="cyan" size="sm" className="w-full">
+                          🅿️ Find Parking Near Destination
+                        </GlowButton>
+                      </Link>
                     </motion.div>
                   )}
                 </AnimatePresence>

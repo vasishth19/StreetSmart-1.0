@@ -21,7 +21,7 @@ import math
 import random
 import logging
 from datetime import datetime, timedelta
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 from uuid import uuid4
 
 from app.config import settings
@@ -104,7 +104,7 @@ class ParkingEngine:
             ids.append(spot_id)
         self._zone_spot_ids[zone["id"]] = ids
 
-    def _ensure_zone_near(self, lat: float, lng: float):
+    def _ensure_zone_near(self, lat: float, lng: float, area_name: Optional[str] = None):
         """If no known zone (seeded or previously auto-generated) is
         within AUTO_ZONE_TRIGGER_KM of this location, create one right
         here — same generation logic as the seed zones, so the feature
@@ -123,10 +123,11 @@ class ParkingEngine:
         if any(z["id"] == zone_id for z in self._zones_meta):
             return  # already generated for this grid cell
 
+        clean_name = (area_name or "").strip().split(",")[0][:40]
         new_zone = {
             "id": zone_id,
-            "name": "Nearby Street Parking",
-            "area": f"Auto-detected zone ({grid_lat:.2f}, {grid_lng:.2f})",
+            "name": f"Parking near {clean_name}" if clean_name else "Nearby Street Parking",
+            "area": area_name.strip()[:80] if area_name else f"Auto-detected zone ({grid_lat:.2f}, {grid_lng:.2f})",
             "lat": lat,
             "lng": lng,
             "radius_m": self.AUTO_ZONE_RADIUS_M,
@@ -143,7 +144,7 @@ class ParkingEngine:
         logger.info(f"Auto-generated parking zone {zone_id} near ({lat}, {lng})")
 
     @staticmethod
-    def _offset_latlng(lat: float, lng: float, bearing: float, dist_m: float) -> (float, float):
+    def _offset_latlng(lat: float, lng: float, bearing: float, dist_m: float) -> Tuple[float, float]:
         R = 6371000
         lat1, lng1 = math.radians(lat), math.radians(lng)
         lat2 = math.asin(
@@ -306,8 +307,11 @@ class ParkingEngine:
             ))
         return zones
 
-    def get_nearby_spots(self, lat: float, lng: float, radius_km: float = 1.0, limit: int = 60) -> List[ParkingSpot]:
-        self._ensure_zone_near(lat, lng)
+    def get_nearby_spots(
+        self, lat: float, lng: float, radius_km: float = 1.0, limit: int = 60,
+        area_name: Optional[str] = None,
+    ) -> List[ParkingSpot]:
+        self._ensure_zone_near(lat, lng, area_name)
 
         # Tick every zone within a generous range so results reflect live state
         for meta in self._zones_meta:

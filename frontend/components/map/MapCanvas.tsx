@@ -326,7 +326,11 @@ export default function MapCanvas({
 
     routes.forEach((route, idx) => {
       const isSelected = selectedRoute?.id === route.id;
-      const color = ROUTE_COLORS[idx % ROUTE_COLORS.length];
+      // Use the route's own semantic color (Women Safe = pink, Accessible = blue,
+      // Smart/Safe = green, priority vehicle colors, etc.) so the line on the map
+      // always matches the label/legend. Falls back to the palette only if a
+      // route ever comes through with no color assigned.
+      const color = (route as any).color || ROUTE_COLORS[idx % ROUTE_COLORS.length];
 
       // Decode path — supports encoded polyline string, GeoJSON-style arrays,
       // or the StreetSmart backend's own `coordinates: [[lng, lat], ...]` field
