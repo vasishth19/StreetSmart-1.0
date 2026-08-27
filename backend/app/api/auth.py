@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import hashlib
 import secrets
 import httpx
@@ -180,7 +180,7 @@ async def forgot_password(body: ForgotPasswordRequest, background_tasks: Backgro
         return generic_response
 
     token   = secrets.token_urlsafe(32)
-    expires = (datetime.utcnow() + timedelta(minutes=RESET_TOKEN_EXPIRE_MINUTES)).isoformat()
+    expires = (datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_EXPIRE_MINUTES)).isoformat()
 
     try:
         supabase.table("users").update({
@@ -213,7 +213,11 @@ async def reset_password(body: ResetPasswordRequest):
         raise HTTPException(status_code=400, detail="Invalid or expired reset link")
 
     expires_at = datetime.fromisoformat(user["reset_token_expires"])
-    if datetime.utcnow() > expires_at:
+    if expires_at.tzinfo is None:
+        # Handles tokens created before this fix, which were stored without
+        # timezone info — treat them as UTC (they were created with utcnow()).
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) > expires_at:
         raise HTTPException(status_code=400, detail="This reset link has expired")
 
     try:
