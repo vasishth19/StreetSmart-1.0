@@ -131,7 +131,7 @@ def send_reset_email(to_email: str, reset_link: str):
     if not SENDGRID_API_KEY or not SENDGRID_FROM:
         # Not configured — log instead of failing the request, so local/dev
         # testing still works without a real email account set up.
-        print(f"[password reset] SENDGRID_API_KEY/SENDGRID_FROM not set. Link for {to_email}: {reset_link}")
+        print(f"[password reset] SENDGRID_API_KEY/SENDGRID_FROM not set. Link for {to_email}: {reset_link}", flush=True)
         return
 
     html_body = (
@@ -143,7 +143,7 @@ def send_reset_email(to_email: str, reset_link: str):
         f"<p>— StreetSmart</p>"
     )
 
-    print(f"[password reset] Attempting to send via SendGrid -> {to_email}")
+    print(f"[password reset] Attempting to send via SendGrid -> {to_email}", flush=True)
     try:
         resp = httpx.post(
             "https://api.sendgrid.com/v3/mail/send",
@@ -160,11 +160,11 @@ def send_reset_email(to_email: str, reset_link: str):
             timeout=10,
         )
         if resp.status_code == 202:
-            print(f"[password reset] SUCCESS — SendGrid accepted the message for {to_email}")
+            print(f"[password reset] SUCCESS — SendGrid accepted the message for {to_email}", flush=True)
         else:
-            print(f"[password reset] SendGrid rejected the request ({resp.status_code}): {resp.text}")
+            print(f"[password reset] SendGrid rejected the request ({resp.status_code}): {resp.text}", flush=True)
     except Exception as e:
-        print(f"[password reset] SEND FAILED ({type(e).__name__}): {e}")
+        print(f"[password reset] SEND FAILED ({type(e).__name__}): {e}", flush=True)
         raise
 
 @router.post("/forgot-password")
@@ -176,7 +176,7 @@ async def forgot_password(body: ForgotPasswordRequest, background_tasks: Backgro
     generic_response = {"message": "If that email is registered, a reset link has been sent."}
 
     if not user:
-        print(f"[password reset] No account found for {body.email} — returning generic response")
+        print(f"[password reset] No account found for {body.email} — returning generic response", flush=True)
         return generic_response
 
     token   = secrets.token_urlsafe(32)
