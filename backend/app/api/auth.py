@@ -21,13 +21,17 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 RESET_TOKEN_EXPIRE_MINUTES  = 30
 
 # ✅ Render's free tier blocks outbound SMTP ports (25/465/587) platform-wide,
-# so raw smtplib can never work there regardless of credentials. Resend sends
-# over HTTPS instead, which isn't blocked. Free tier: 3,000 emails/month.
-# Get a key at https://resend.com — RESEND_FROM defaults to Resend's shared
-# test sender, which works immediately with no domain setup.
-RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
-RESEND_FROM    = os.getenv("RESEND_FROM", "StreetSmart <onboarding@resend.dev>")
-FRONTEND_URL   = os.getenv("FRONTEND_URL", "http://localhost:3000")
+# so raw smtplib can never work there regardless of credentials. SendGrid
+# sends over HTTPS instead, which isn't blocked.
+# We use "Single Sender Verification" (SendGrid dashboard → Settings →
+# Sender Authentication → Verify a Single Sender) instead of full domain
+# verification — this only requires proving you own ONE email address
+# (like a Gmail address), no custom domain needed, and once verified you
+# can send to ANY recipient. Free tier: 100 emails/day, 60-day trial window
+# for new accounts (plenty for hackathon timelines).
+SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "")
+SENDGRID_FROM    = os.getenv("SENDGRID_FROM", "")  # must match your verified Single Sender email exactly
+FRONTEND_URL     = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 oauth2 = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
@@ -124,10 +128,10 @@ async def me(user=Depends(require_user)):
     )
 
 def send_reset_email(to_email: str, reset_link: str):
-    if not RESEND_API_KEY:
+    if not SENDGRID_API_KEY or not SENDGRID_FROM:
         # Not configured — log instead of failing the request, so local/dev
         # testing still works without a real email account set up.
-        print(f"[password reset] RESEND_API_KEY not set. Link for {to_email}: {reset_link}")
+        print(f"[password reset] SENDGRID_API_KEY/SENDGRID_FROM not set. Link for {to_email}: {reset_link}")
         return
 
     html_body = (
@@ -139,23 +143,26 @@ def send_reset_email(to_email: str, reset_link: str):
         f"<p>— StreetSmart</p>"
     )
 
-    print(f"[password reset] Attempting to send via Resend -> {to_email}")
+    print(f"[password reset] Attempting to send via SendGrid -> {to_email}")
     try:
         resp = httpx.post(
-            "https://api.resend.com/emails",
-            headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
+            "https://api.sendgrid.com/v3/mail/send",
+            headers={
+                "Authorization": f"Bearer {SENDGRID_API_KEY}",
+                "Content-Type":  "application/json",
+            },
             json={
-                "from":    RESEND_FROM,
-                "to":      [to_email],
+                "personalizations": [{"to": [{"email": to_email}]}],
+                "from":    {"email": SENDGRID_FROM, "name": "StreetSmart"},
                 "subject": "Reset your StreetSmart password",
-                "html":    html_body,
+                "content": [{"type": "text/html", "value": html_body}],
             },
             timeout=10,
         )
-        if resp.status_code in (200, 201, 202):
-            print(f"[password reset] SUCCESS — Resend accepted the message for {to_email}")
+        if resp.status_code == 202:
+            print(f"[password reset] SUCCESS — SendGrid accepted the message for {to_email}")
         else:
-            print(f"[password reset] Resend rejected the request ({resp.status_code}): {resp.text}")
+            print(f"[password reset] SendGrid rejected the request ({resp.status_code}): {resp.text}")
     except Exception as e:
         print(f"[password reset] SEND FAILED ({type(e).__name__}): {e}")
         raise
