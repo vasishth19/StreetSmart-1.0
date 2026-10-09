@@ -176,7 +176,7 @@ function makeLiveIcon(L: any, heading: number | null): any {
 
 // ─── Dark tile layer (matches app theme) ─────────────────────────────────────
 // Using CartoDB Dark Matter — free, no API key required
-const DARK_TILE_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+const DARK_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 const TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
 export default function MapCanvas({
@@ -226,7 +226,7 @@ export default function MapCanvas({
         L.tileLayer(DARK_TILE_URL, {
           attribution: TILE_ATTRIBUTION,
           maxZoom: 19,
-          subdomains: 'abcd',
+          subdomains: 'abc',
         }).addTo(map);
 
         // Zoom control (right side to match your layout)
