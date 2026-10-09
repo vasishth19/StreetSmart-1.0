@@ -159,3 +159,4 @@ h1, h2, h3, h4, h5, h6 {
   background: rgba(0, 229, 255, 0.3);
   color: var(--text-primary);
 }
+  .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9); }
