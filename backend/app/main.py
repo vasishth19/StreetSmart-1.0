@@ -17,6 +17,8 @@ from app.api.reviews     import router as reviews_router
 from app.api.metrics     import metrics_router
 from app.api.sos         import router as sos_router
 from app.api.parking     import router as parking_router
+from app.api.admin       import router as admin_router
+from app.api.incidents   import router as incidents_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("streetsmart")
@@ -24,7 +26,7 @@ logger = logging.getLogger("streetsmart")
 app = FastAPI(
     title       = "StreetSmart API",
     description = "Safety-first Smart City Navigation Platform",
-    version     = "2.0.0",
+    version     = "2.1.0",
     docs_url    = "/docs",
     redoc_url   = "/redoc",
 )
@@ -47,6 +49,8 @@ app.include_router(reviews_router)
 app.include_router(metrics_router)
 app.include_router(sos_router)
 app.include_router(parking_router)
+app.include_router(admin_router)
+app.include_router(incidents_router)
 
 # ── Health ────────────────────────────────────────────────────────
 @app.get("/health")

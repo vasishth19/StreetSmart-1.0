@@ -39,6 +39,9 @@ export interface Coordinates {
 export interface RoutePreferences {
   user_profile:       'general' | 'woman' | 'elderly' | 'wheelchair' | 'visually_impaired';
   transport_mode?:    'walking' | 'cycling' | 'driving';
+  travel_mode?:       string;   // walking | wheelchair | cycling | motorcycle | car | ambulance | fire | police
+  departure_time?:    string;   // ISO-8601, defaults to now
+  use_profile_weights?: boolean;
   avoid_stairs?:      boolean;
   avoid_crowds?:      boolean;
   prefer_lit?:        boolean;
@@ -65,12 +68,47 @@ export interface RouteScores {
   risk_level:    'LOW' | 'MEDIUM' | 'HIGH';
 }
 
+export interface RouteSegmentInfo {
+  coordinates:   number[][];
+  distance_m:    number;
+  duration_s:    number;
+  street_name?:  string;
+  quality?:      'good' | 'fair' | 'poor' | 'unknown';
+  traffic?:      'free' | 'moderate' | 'heavy' | null;
+  traffic_ratio?: number | null;
+  color?:        string | null;
+  issues?:       string[];
+  [k: string]:   any;
+}
+
+export interface EtaBreakdown {
+  mode: string; mode_label: string; speed_basis: string;
+  moving_min: number; delay_min: number; total_min: number;
+  traffic_source?: 'live' | 'estimated' | 'none' | null;
+  range_min?: number[];
+}
+
+export interface RouteHazard {
+  kind: 'community' | 'osm' | 'sos_cluster';
+  type: string; severity: string; lat: number; lng: number; label: string;
+  along_m: number; trust?: number | null; age_days?: number | null; verified?: boolean; report_id?: string | null;
+}
+
+export interface DataQuality {
+  osm_status: 'ok' | 'cached' | 'warming' | 'unavailable';
+  community_status: 'ok' | 'unavailable';
+  traffic_source: 'live' | 'estimated' | 'none';
+  routing_provider: string;
+  lighting_coverage_pct: number; surface_coverage_pct: number; safety_evidence_pct: number;
+  community_reports_used: number; notes: string[];
+}
+
 export interface RouteResult {
   id:                 string;
   name:               string;
   description:        string;
   coordinates:        number[][];
-  segments:           any[];
+  segments:           RouteSegmentInfo[];
   scores:             RouteScores;
   distance_km:        number;
   duration_min:       number;
@@ -80,6 +118,14 @@ export interface RouteResult {
   highlights:         string[];
   color:              string;
   rank:               number;
+  // v2.1 (optional)
+  mode?:              string;
+  eta?:               EtaBreakdown;
+  hazards?:           RouteHazard[];
+  why?:               string[];
+  draw_style?:        'dotted' | 'solid';
+  data_quality?:      DataQuality;
+  is_night?:          boolean;
 }
 
 export interface RoutesResponse {
@@ -100,6 +146,8 @@ export interface ReportRequest {
   address?:     string;
   anonymous?:   boolean;
   reporter_contact?: string;
+  device_id?:   string;
+  accuracy_m?:  number;
 }
 
 export interface SOSRequest {
@@ -234,6 +282,15 @@ export const apiService = {
 
   async submitReport(report: ReportRequest) {
     const res = await apiClient.post('/reports', report);
+    return res.data;
+  },
+
+  async uploadReportMedia(reportId: string | number, files: File[]) {
+    const fd = new FormData();
+    files.forEach((f) => fd.append('files', f));
+    const res = await apiClient.post(`/reports/${reportId}/media`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' }, timeout: 30000,
+    });
     return res.data;
   },
 

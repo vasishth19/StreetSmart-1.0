@@ -16,7 +16,7 @@ const WEEK = [
 ];
 type Tab = 'dashboard'|'reports'|'reviews'|'users';
 const SEV:Record<string,string> = {CRITICAL:'#FF3B3B',HIGH:'#FF3B3B',MEDIUM:'#FFB020',LOW:'#00FF9C',critical:'#FF3B3B',high:'#FF3B3B',medium:'#FFB020',low:'#00FF9C'};
-const ICONS:Record<string,string> = {poor_lighting:'💡',unsafe_area:'⚠️',broken_sidewalk:'🚧',missing_ramp:'♿',construction:'🏗️',harassment:'🚨',flooding:'💧',obstruction:'🚫'};
+const ICONS:Record<string,string> = {poor_lighting:'💡',unsafe_area:'⚠️',broken_sidewalk:'🚧',missing_ramp:'♿',construction:'🏗️',harassment:'🚨',flooding:'💧',obstruction:'🚫',pothole:'🕳️',accident:'💥',crowd:'👥',road_blocked:'⛔'};
 
 function timeAgo(d:string){
   try{
@@ -47,10 +47,29 @@ export default function AdminPage() {
   const [loadR,setLoadR]=useState(false);
   const [loadRv,setLoadRv]=useState(false);
 
-  const login=()=>{
+  // Admin token is issued by the SERVER (no password lives in the browser any more).
+  const [token,setToken]=useState('');
+  const login=async()=>{
     if(!email.trim()||!pass.trim()){setErr('Please enter credentials');return;}
-    if((email==='admin@streetsmart.app'||email==='admin')&&(pass==='admin2026'||pass==='admin')){setAuthed(true);setErr('');}
-    else setErr('Invalid credentials');
+    try{
+      const r=await fetch(`${API}/admin/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password:pass})});
+      if(!r.ok){setErr(r.status===401?'Invalid credentials':`Server error (${r.status})`);return;}
+      const d=await r.json();
+      setToken(d.token);setAuthed(true);setErr('');
+    }catch{setErr('Cannot reach the server');}
+  };
+
+  // Persist moderation decisions — before, these buttons only changed what was on screen.
+  const setStatus=async(id:any,status:string)=>{
+    try{
+      const r=await fetch(`${API}/reports/${id}/status`,{method:'PATCH',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({status})});
+      if(!r.ok){
+        const d=await r.json().catch(()=>({}));
+        toast.error(d.detail||`Could not save (${r.status})`);return;
+      }
+      setReports(p=>p.map(x=>x.id===id?{...x,status}:x));
+      toast.success(`Report ${status}`);
+    }catch{toast.error('Cannot reach the server — decision not saved');}
   };
 
   const [fetchError,setFetchError]=useState('');
@@ -91,7 +110,7 @@ export default function AdminPage() {
 
   useEffect(()=>{if(authed){fetchReports();fetchReviews();}}, [authed]);
 
-  const pendingR   = reports.filter(r=>r.status==='reported'||r.status==='pending'||!r.status);
+  const pendingR   = reports.filter(r=>r.status==='reported'||r.status==='pending'||r.status==='flagged'||!r.status);
   const approvedR  = reports.filter(r=>r.status==='approved'||r.status==='investigating'||r.status==='resolved');
   const pendingRv  = reviews.filter(r=>!r.approved&&r.status!=='approved');
   const publishedRv= reviews.filter(r=>r.approved||r.status==='approved');
@@ -279,15 +298,15 @@ export default function AdminPage() {
                                 </span>
                               </div>
                               <div className="flex gap-2">
-                                <button onClick={()=>setReports(p=>p.map(x=>x.id===r.id?{...x,status:'approved'}:x))}
+                                <button onClick={()=>setStatus(r.id,'approved')}
                                   className="flex items-center gap-1 px-3 py-1.5 rounded text-xs font-mono font-bold bg-[#00FF9C]/10 text-[#00FF9C] border border-[#00FF9C]/25 hover:bg-[#00FF9C]/20 transition-all">
                                   <CheckCircle className="w-3 h-3"/>APPROVE
                                 </button>
-                                <button onClick={()=>setReports(p=>p.map(x=>x.id===r.id?{...x,status:'rejected'}:x))}
+                                <button onClick={()=>setStatus(r.id,'rejected')}
                                   className="flex items-center gap-1 px-3 py-1.5 rounded text-xs font-mono font-bold bg-[#FF3B3B]/10 text-[#FF3B3B] border border-[#FF3B3B]/25 hover:bg-[#FF3B3B]/20 transition-all">
                                   <XCircle className="w-3 h-3"/>REJECT
                                 </button>
-                                <button className="flex items-center gap-1 px-3 py-1.5 rounded text-xs font-mono font-bold bg-[#FFB020]/10 text-[#FFB020] border border-[#FFB020]/25 hover:bg-[#FFB020]/20 transition-all">
+                                <button onClick={()=>setStatus(r.id,'flagged')} className="flex items-center gap-1 px-3 py-1.5 rounded text-xs font-mono font-bold bg-[#FFB020]/10 text-[#FFB020] border border-[#FFB020]/25 hover:bg-[#FFB020]/20 transition-all">
                                   <Flag className="w-3 h-3"/>FLAG
                                 </button>
                               </div>

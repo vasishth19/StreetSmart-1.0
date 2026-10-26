@@ -9,6 +9,21 @@ import GlowButton from '@/components/ui/GlowButton';
 import NeonCard from '@/components/ui/NeonCard';
 import { apiService } from '@/services/api';
 import { ISSUE_TYPES, SEVERITIES } from '@/lib/reportMeta';
+import { getDeviceId } from '@/lib/deviceId';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+interface Coord { lat: number; lng: number; accuracy?: number; source: 'gps' | 'address' }
+
+// Turn a typed address into coordinates (OpenStreetMap Nominatim).
+async function geocodeAddress(q: string): Promise<Coord | null> {
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`);
+    const j = await r.json();
+    if (j?.[0]) return { lat: parseFloat(j[0].lat), lng: parseFloat(j[0].lon), source: 'address' };
+  } catch {}
+  return null;
+}
 
 interface ExistingReport {
   id: string;
@@ -37,6 +52,20 @@ export default function ReportPage() {
   const [dragOver, setDragOver] = useState(false);
   const [anonymous, setAnonymous] = useState(true);
   const [reporterContact, setReporterContact] = useState('');
+  // REAL location of the problem. (Before: every report was saved at one hard-coded point.)
+  const [coord, setCoord] = useState<Coord | null>(null);
+  const [locStatus, setLocStatus] = useState<'locating' | 'ok' | 'denied'>('locating');
+
+  const captureLocation = () => {
+    setLocStatus('locating');
+    if (!('geolocation' in navigator)) { setLocStatus('denied'); return; }
+    navigator.geolocation.getCurrentPosition(
+      (p) => { setCoord({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, source: 'gps' }); setLocStatus('ok'); },
+      () => setLocStatus('denied'),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 10000 },
+    );
+  };
+  useEffect(() => { captureLocation(); }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -65,18 +94,34 @@ export default function ReportPage() {
       return;
     }
 
+    // Decide where the problem is: GPS if we have it, otherwise the typed address.
+    let where: Coord | null = coord;
+    if (!where || (address.trim() && where.source !== 'gps')) {
+      if (address.trim()) where = (await geocodeAddress(address.trim())) ?? where;
+    }
+    if (!where) {
+      toast.error('We need the location of the problem — allow location access or type an address.');
+      return;
+    }
+
     setLoading(true);
     try {
-      await apiService.submitReport({
-        lat: 26.8467,
-        lng: 80.9462,
+      const saved: any = await apiService.submitReport({
+        lat: where.lat,
+        lng: where.lng,
         issue_type: issueType as any,
         severity: severity as any,
         description,
         address,
         anonymous,
         reporter_contact: anonymous ? undefined : (reporterContact || undefined),
+        device_id: getDeviceId(),
+        accuracy_m: where.accuracy,
       });
+      if (attachedFiles.length && saved?.id) {
+        try { await apiService.uploadReportMedia(saved.id, attachedFiles); }
+        catch { toast('Report saved, but the photo could not be uploaded', { icon: '⚠️' }); }
+      }
 
       const newReport: ExistingReport = {
         id: Date.now().toString(),
@@ -87,8 +132,8 @@ export default function ReportPage() {
         votes: 0,
         address,
         created_at: new Date().toISOString().split('T')[0],
-        lat: 26.8467,
-        lng: 80.9462,
+        lat: where.lat,
+        lng: where.lng,
       };
       setReports(prev => [newReport, ...prev]);
       setSubmitted(true);
@@ -105,11 +150,17 @@ export default function ReportPage() {
     }
   };
 
-  const handleVote = (id: string) => {
+  const handleVote = async (id: string) => {
     if (votedIds.has(id)) return;
-    setVotedIds(prev => new Set([...prev, id]));
-    setReports(prev => prev.map(r => r.id === id ? { ...r, votes: r.votes + 1 } : r));
-    toast.success('Vote recorded!');
+    try {
+      const res = await fetch(`${API_BASE}/reports/${id}/vote`, { method: 'POST' });
+      if (!res.ok) throw new Error();
+      setVotedIds(prev => new Set([...prev, id]));
+      setReports(prev => prev.map(r => r.id === id ? { ...r, votes: r.votes + 1 } : r));
+      toast.success('Vote saved!');
+    } catch {
+      toast.error('Could not save your vote — check your connection');
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -221,6 +272,18 @@ export default function ReportPage() {
                           </button>
                         ))}
                       </div>
+                    </div>
+
+                    {/* Location (captured automatically) */}
+                    <div className="rounded-lg border border-[#00E5FF]/20 bg-[#05080F]/60 px-3 py-2 flex items-center justify-between gap-2">
+                      <div className="text-xs font-mono">
+                        {locStatus === 'locating' && <span className="text-[#8892B0]">📍 Getting your location…</span>}
+                        {locStatus === 'ok' && coord && (
+                          <span className="text-[#00FF9C]">📍 Location captured{coord.accuracy ? ` (±${Math.round(coord.accuracy)} m)` : ''} — report is pinned here</span>
+                        )}
+                        {locStatus === 'denied' && <span className="text-[#FFB020]">📍 Location blocked — type the address below instead</span>}
+                      </div>
+                      <button type="button" onClick={captureLocation} className="text-[10px] font-mono text-[#00E5FF] underline">retry</button>
                     </div>
 
                     {/* Address */}

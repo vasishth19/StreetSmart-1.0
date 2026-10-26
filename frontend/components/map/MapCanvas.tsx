@@ -176,7 +176,7 @@ function makeLiveIcon(L: any, heading: number | null): any {
 
 // ─── Dark tile layer (matches app theme) ─────────────────────────────────────
 // Using CartoDB Dark Matter — free, no API key required
-const DARK_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const DARK_TILE_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 const TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
 export default function MapCanvas({
@@ -226,7 +226,7 @@ export default function MapCanvas({
         L.tileLayer(DARK_TILE_URL, {
           attribution: TILE_ATTRIBUTION,
           maxZoom: 19,
-          subdomains: 'abc',
+          subdomains: 'abcd',
         }).addTo(map);
 
         // Zoom control (right side to match your layout)
@@ -364,26 +364,44 @@ export default function MapCanvas({
         ];
       }
 
-      // Glow/shadow polyline
-      const shadow = L.polyline(path, {
-        color,
-        weight: isSelected ? 14 : 0,
-        opacity: isSelected ? 0.15 : 0,
-        interactive: false,
-      }).addTo(map);
+      const dotted = (route as any).draw_style === 'dotted';
+      const segs: any[] = Array.isArray((route as any).segments) ? (route as any).segments : [];
+      const hasSegs = isSelected && segs.length > 0 && segs.every((sg) => Array.isArray(sg.coordinates) && sg.coordinates.length > 1);
 
-      // Main route line
-      const line = L.polyline(path, {
-        color,
-        weight: isSelected ? 5 : 3,
-        opacity: isSelected ? 0.92 : UNSELECTED_OPACITY,
-        dashArray: isSelected ? undefined : undefined,
-        lineCap: 'round',
-        lineJoin: 'round',
-      }).addTo(map);
+      // Walking / wheelchair = DOTTED line (like Google Maps); vehicles = solid line
+      // coloured by traffic (green = flowing, yellow = slow, red = heavy).
+      const styleFor = (c: string, selected: boolean) => dotted
+        ? { color: c, weight: selected ? 6 : 4, opacity: selected ? 0.95 : UNSELECTED_OPACITY + 0.1, dashArray: '1 11', lineCap: 'round' as const, lineJoin: 'round' as const }
+        : { color: c, weight: selected ? 6 : 3, opacity: selected ? 0.95 : UNSELECTED_OPACITY, lineCap: 'round' as const, lineJoin: 'round' as const };
 
-      line.on('click', () => onRouteSelect(route));
-      shadow.on('click', () => onRouteSelect(route));
+      if (isSelected) {
+        // white casing so the colours stay readable on the dark map
+        polylinesRef.current.push(L.polyline(path, {
+          color: '#05080F', weight: dotted ? 10 : 10, opacity: dotted ? 0.0 : 0.65, interactive: false, lineCap: 'round',
+        }).addTo(map));
+      }
+
+      if (hasSegs) {
+        segs.forEach((sg) => {
+          const segPath = sg.coordinates.map((pt: number[]) => [pt[1], pt[0]] as [number, number]);
+          const c = sg.color || color;
+          const line = L.polyline(segPath, styleFor(c, true)).addTo(map);
+          const tip = [
+            sg.street_name ? `<b>${sg.street_name}</b>` : '',
+            sg.traffic ? `Traffic: ${sg.traffic === 'free' ? '🟢 flowing' : sg.traffic === 'moderate' ? '🟡 slow' : '🔴 heavy'}${sg.traffic_ratio ? ` (${Math.round(sg.traffic_ratio * 100)}% of free-flow speed)` : ''}` : (sg.quality && sg.quality !== 'unknown' ? `Route quality: ${sg.quality}` : 'Not enough data for this stretch'),
+            ...(sg.issues || []).map((i: string) => `• ${i}`),
+          ].filter(Boolean).join('<br/>');
+          line.bindTooltip(tip, { sticky: true, className: 'ss-tip' });
+          line.on('click', () => onRouteSelect(route));
+          polylinesRef.current.push(line);
+        });
+      } else {
+        const shadow = L.polyline(path, { color, weight: isSelected ? 14 : 0, opacity: isSelected ? 0.15 : 0, interactive: false }).addTo(map);
+        const line = L.polyline(path, styleFor(color, isSelected)).addTo(map);
+        line.on('click', () => onRouteSelect(route));
+        shadow.on('click', () => onRouteSelect(route));
+        polylinesRef.current.push(shadow, line);
+      }
 
       // Direction arrow (selected route only)
       if (isSelected && path.length > 1) {
@@ -391,8 +409,6 @@ export default function MapCanvas({
         const arrowDecorator = createArrowDecorator(L, map, path[mid], path[Math.min(mid + 1, path.length - 1)], color);
         polylinesRef.current.push(arrowDecorator);
       }
-
-      polylinesRef.current.push(shadow, line);
     });
   }, [mapReady, routes, selectedRoute, origin, destination]);
 
@@ -517,6 +533,41 @@ export default function MapCanvas({
     };
   }, [mapReady, blackSpots, showBlackSpots]);
 
+  // ── Hazards that affect the SELECTED route (community reports, SOS clusters, OSM) ──
+  const hazardMarkersRef = useRef<any[]>([]);
+  useEffect(() => {
+    if (!mapReady || !mapInstance.current) return;
+    const L = window.L;
+    hazardMarkersRef.current.forEach((m) => m.remove());
+    hazardMarkersRef.current = [];
+    const hz: any[] = (selectedRoute as any)?.hazards ?? [];
+    const EMOJI: Record<string, string> = {
+      poor_lighting: '💡', unsafe_area: '⚠️', harassment: '🚨', broken_sidewalk: '🚧', missing_ramp: '♿',
+      construction: '🏗️', flooding: '💧', obstruction: '🚫', pothole: '🕳️', accident: '💥', crowd: '👥', road_blocked: '⛔', sos_cluster: '🆘', unlit_road: '🌑', steps: '🪜',
+    };
+    hz.forEach((h) => {
+      const color = h.kind === 'sos_cluster' ? '#FF0000' : h.severity === 'critical' ? '#FF0000' : h.severity === 'high' ? '#FF3B3B' : h.severity === 'medium' ? '#FFB020' : '#00FF9C';
+      const marker = L.marker([h.lat, h.lng], {
+        icon: makeBlackSpotIcon(L, color, EMOJI[h.type] || '⚠️', h.verified || h.kind === 'sos_cluster'),
+        zIndexOffset: 500, title: h.label,
+      }).addTo(mapInstance.current);
+      marker.bindPopup(`<div style="font-family:monospace;font-size:11px;min-width:170px;color:#0B1020">
+        <div style="font-weight:bold">${h.label}</div>
+        <div style="color:#555;margin-top:3px">${h.kind === 'community' ? (h.verified ? '✅ Community verified' : '🕓 Not yet verified') : h.kind === 'osm' ? '🗺️ From OpenStreetMap' : '🛡️ Anonymised SOS data'} · km ${(h.along_m / 1000).toFixed(1)}</div>
+      </div>`);
+      hazardMarkersRef.current.push(marker);
+    });
+    return () => { hazardMarkersRef.current.forEach((m) => m.remove()); hazardMarkersRef.current = []; };
+  }, [mapReady, selectedRoute]);
+
+  // ── Fit the map to the selected route ──
+  useEffect(() => {
+    if (!mapReady || !mapInstance.current || !selectedRoute?.coordinates?.length) return;
+    const L = window.L;
+    const b = L.latLngBounds(selectedRoute.coordinates.map((c: number[]) => [c[1], c[0]]));
+    mapInstance.current.fitBounds(b, { padding: [60, 60] });
+  }, [mapReady, selectedRoute?.id]);
+
   // ── Real rest stops (benches/shelters/toilets/water) from OpenStreetMap ────
   useEffect(() => {
     if (!mapReady || !mapInstance.current) return;
@@ -612,6 +663,7 @@ export default function MapCanvas({
         .leaflet-bar { border: 1px solid #1a2a4a !important; box-shadow: none !important; }
         /* Remove default marker styling since we use custom SVG */
         .leaflet-div-icon { background: transparent !important; border: none !important; }
+        .ss-tip { background:#0B1020 !important; color:#E6F1FF !important; border:1px solid #1a2a4a !important; font:11px monospace !important; }
       `}</style>
     </div>
   );

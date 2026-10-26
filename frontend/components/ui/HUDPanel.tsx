@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion';
 import { Shield, Lightbulb, Users, Accessibility, TrendingUp } from 'lucide-react';
 import type { RouteResult } from '@/services/api';
+import { formatDuration } from '@/lib/format';
 
 interface HUDPanelProps {
   route: RouteResult;
@@ -84,7 +85,7 @@ export default function HUDPanel({ route }: HUDPanelProps) {
           <div className="text-[8px] text-[#4A5568]">DISTANCE</div>
         </div>
         <div className="text-center">
-          <div className="text-xs font-bold text-[#00E5FF]">{duration_min.toFixed(0)}min</div>
+          <div className="text-xs font-bold text-[#00E5FF]">{formatDuration(duration_min)}</div>
           <div className="text-[8px] text-[#4A5568]">DURATION</div>
         </div>
       </div>

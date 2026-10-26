@@ -13,6 +13,10 @@ class IssueType(str, Enum):
     HARASSMENT = "harassment"
     FLOODING = "flooding"
     OBSTRUCTION = "obstruction"
+    POTHOLE = "pothole"            # broken road surface (cars, bikes, wheelchairs)
+    ACCIDENT = "accident"          # sudden accident / vehicle breakdown
+    CROWD = "crowd"                # sudden crowd / gathering / procession
+    ROAD_BLOCKED = "road_blocked"  # road closed / impassable
     OTHER = "other"
 
 
@@ -32,6 +36,21 @@ class ReportRequest(BaseModel):
     anonymous: bool = True
     reporter_contact: Optional[str] = Field(None, max_length=120)
     address: Optional[str] = None
+    # anonymous per-browser id (random string kept in localStorage). Used only to stop
+    # one device confirming the same report twice. Stored hashed.
+    device_id: Optional[str] = Field(None, max_length=80)
+    accuracy_m: Optional[float] = None   # GPS accuracy when the report was captured
+
+
+class ConfirmRequest(BaseModel):
+    device_id: str = Field(..., min_length=6, max_length=80)
+    still_present: bool = True           # False = "it has been fixed"
+    lat: float = Field(..., ge=-90, le=90)   # confirmer's own position (must be near the report)
+    lng: float = Field(..., ge=-180, le=180)
+
+
+class StatusUpdate(BaseModel):
+    status: str                          # approved | rejected | flagged | resolved | investigating | reported
 
 
 class ReportResponse(BaseModel):

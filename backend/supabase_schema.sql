@@ -64,3 +64,32 @@ create table if not exists sos_alerts (
   status text default 'active',
   created_at timestamptz default now()
 );
+
+-- ═══════════════════════════════════════════════════════════════
+-- v2.1 MIGRATION  (safe to run more than once) — paste into Supabase → SQL editor
+-- Adds crowd-verification, photo evidence and report accuracy fields.
+-- ═══════════════════════════════════════════════════════════════
+alter table reports add column if not exists confirmations int default 0;
+alter table reports add column if not exists denials int default 0;
+alter table reports add column if not exists verified boolean default false;
+alter table reports add column if not exists verified_by text;
+alter table reports add column if not exists last_confirmed_at timestamptz;
+alter table reports add column if not exists expires_at timestamptz;
+alter table reports add column if not exists device_hash text;
+alter table reports add column if not exists accuracy_m double precision;
+alter table reports add column if not exists photo_urls jsonb default '[]'::jsonb;
+alter table reports add column if not exists is_simulated boolean default false;
+
+create table if not exists report_confirmations (
+  id bigint generated always as identity primary key,
+  report_id bigint not null,
+  device_hash text not null,
+  still_present boolean not null default true,
+  created_at timestamptz default now(),
+  unique (report_id, device_hash)
+);
+
+create index if not exists reports_geo_idx on reports (lat, lng);
+create index if not exists sos_geo_idx on sos_alerts (lat, lng);
+
+-- Also create a PUBLIC storage bucket named:  report-media   (Storage → New bucket → Public)

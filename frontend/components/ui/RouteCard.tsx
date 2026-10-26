@@ -5,6 +5,7 @@ import { Clock, MapPin, Shield, Zap, ChevronRight } from 'lucide-react';
 import NeonCard from './NeonCard';
 import SafetyBadge from './SafetyBadge';
 import type { RouteResult } from '@/services/api';
+import { formatDuration } from '@/lib/format';
 
 interface RouteCardProps {
   route: RouteResult;
@@ -73,20 +74,32 @@ export default function RouteCard({ route, isSelected, onSelect, rank }: RouteCa
         </div>
       </div>
 
-      {/* Metrics Row */}
-      <div className="flex items-center gap-3 mb-3">
+      {/* Metrics Row — distance + mode-specific ETA */}
+      <div className="flex items-center gap-3 mb-1">
         <div className="flex items-center gap-1.5 text-xs text-[#8892B0]">
           <MapPin className="w-3 h-3" />
-          <span className="font-mono">{route.distance_km.toFixed(1)}km</span>
+          <span className="font-mono">{route.distance_km.toFixed(1)} km</span>
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-[#8892B0]">
-          <Clock className="w-3 h-3" />
-          <span className="font-mono">{route.duration_min.toFixed(0)}min</span>
+        <div className="flex items-center gap-1.5 text-xs text-[#E6F1FF]">
+          <Clock className="w-3 h-3 text-[#8892B0]" />
+          <span className="font-mono font-semibold">{route.eta?.mode_label ? `${route.eta.mode_label} ` : ''}{formatDuration(route.duration_min)}</span>
         </div>
         <div className="ml-auto">
           <SafetyBadge score={scores.overall} riskLevel={scores.risk_level} />
         </div>
       </div>
+      {route.eta && (
+        <div className="text-[9px] text-[#8892B0] font-mono leading-snug mb-3">
+          {route.eta.range_min && route.eta.range_min.length === 2 && (
+            <span>typical range {formatDuration(route.eta.range_min[0])}–{formatDuration(route.eta.range_min[1])}</span>
+          )}
+          {route.eta.delay_min >= 2 && (
+            <span className="text-[#FFB020]"> · +{Math.round(route.eta.delay_min)} min {route.eta.traffic_source && route.eta.traffic_source !== 'none' ? 'traffic' : 'obstacles'}</span>
+          )}
+          {route.eta.traffic_source === 'estimated' && <span> · traffic estimated</span>}
+          {route.eta.traffic_source === 'live' && <span className="text-[#00FF9C]"> · live traffic</span>}
+        </div>
+      )}
 
       {/* Score Bars */}
       <div className="space-y-1.5 mb-3">
@@ -108,6 +121,18 @@ export default function RouteCard({ route, isSelected, onSelect, rank }: RouteCa
         <div className="text-[10px] text-[#FFB020] line-clamp-1">
           {route.warnings[0]}
         </div>
+      )}
+
+      {route.data_quality && route.data_quality.osm_status !== 'unavailable' && (
+        <div className="text-[9px] text-[#4A5568] font-mono mt-1">
+          data: lighting {route.data_quality.lighting_coverage_pct.toFixed(0)}% · surface {route.data_quality.surface_coverage_pct.toFixed(0)}% · {route.data_quality.community_reports_used} report(s)
+        </div>
+      )}
+      {route.data_quality?.osm_status === 'warming' && (
+        <div className="text-[9px] text-[#FFB020] font-mono mt-1">⏳ loading street data… scores will refine</div>
+      )}
+      {route.data_quality?.osm_status === 'unavailable' && (
+        <div className="text-[9px] text-[#FF3B3B] font-mono mt-1">⚠ safety analysis unavailable right now</div>
       )}
 
       {/* Select indicator */}

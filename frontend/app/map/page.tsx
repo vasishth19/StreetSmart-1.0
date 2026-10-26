@@ -16,7 +16,14 @@ import NeonCard from '@/components/ui/NeonCard';
 import RouteCard from '@/components/ui/RouteCard';
 import HUDPanel from '@/components/ui/HUDPanel';
 import PreferenceSelector from '@/components/ui/PreferenceSelector';
-import VehicleModeSelector from '@/components/ui/VehicleModeSelector';
+import VehicleModeSelector, { isFootMode } from '@/components/ui/VehicleModeSelector';
+import MapLegend from '@/components/map/MapLegend';
+import NearbyConfirm from '@/components/ui/NearbyConfirm';
+import { useNearbyReports } from '@/hooks/useNearbyReports';
+import { formatDuration } from '@/lib/format';
+import DemoPanel from '@/components/ui/DemoPanel';
+import { useIncidentWatch } from '@/hooks/useIncidentWatch';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useRoutes } from '@/hooks/useRoutes';
 import { useSpeech } from '@/hooks/useSpeech';
 import { useLiveTracking } from '@/hooks/useLiveTracking';
@@ -27,11 +34,9 @@ import type { BlackSpotReport } from '@/components/map/MapCanvas';
 import toast from 'react-hot-toast';
 
 const LeafletMapCanvas = dynamic(() => import('@/components/map/MapCanvas'), { ssr: false });
-const GoogleMapCanvas  = dynamic(() => import('@/components/map/GoogleMapCanvas'), { ssr: false });
-// ✅ Real Google Maps is used automatically once NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
-// is set in your .env — no code change needed to switch. Falls back to the
-// free OpenStreetMap-based map until then.
-const MapCanvas = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ? GoogleMapCanvas : LeafletMapCanvas;
+// The map is always the free OpenStreetMap (Leaflet) canvas: dotted walking routes,
+// traffic-coloured vehicle routes and hazard markers are drawn there.
+const MapCanvas = LeafletMapCanvas;
 
 // ✅ FIXED: Neutral India center — GPS will always override this
 // No hardcoded city — works worldwide
@@ -252,8 +257,13 @@ export default function MapPage() {
   const [audioEnabled,    setAudioEnabled]      = useState(false);
   const [instructionIdx,  setInstructionIdx]    = useState(0);
   const [sidebarOpen,     setSidebarOpen]       = useState(true);
+  // Phones: the side panel becomes a bottom sheet over a full-screen map
+  const isMobile = useIsMobile();
+  const [sheet, setSheet] = useState<'peek' | 'half' | 'full'>('half');
+  const SHEET_H = { peek: '76px', half: '52dvh', full: '88dvh' } as const;
+  const cycleSheet = () => setSheet((v) => (v === 'peek' ? 'half' : v === 'half' ? 'full' : 'peek'));
 
-  const { routes, loading, fetchRoutes, clearRoutes } = useRoutes();
+  const { routes, loading, refining, error: routeError, meta: routeMeta, fetchRoutes, clearRoutes } = useRoutes();
   const router = useRouter();
   const [username, setUsername] = useState('');
 
@@ -344,9 +354,22 @@ export default function MapPage() {
 
   const { listening, supported: voiceOk, startListening, stopListening } = useVoiceRecognition(handleVoiceResult);
 
-  const [vehicleMode, setVehicleMode] = useState('pedestrian');
+  const [vehicleMode, setVehicleMode] = useState('walking');
   const [restStops, setRestStops] = useState<RestStop[]>([]);
   const { position: livePosition, tracking: liveTracking, error: liveTrackError, start: startLiveTracking, stop: stopLiveTracking } = useLiveTracking();
+
+  const nearby = useNearbyReports(livePosition);
+  useEffect(() => { if (isMobile && routes.length > 0) setSheet('half'); }, [routes.length, isMobile]);
+  const [rerouteNote, setRerouteNote] = useState<string | null>(null);
+
+  const buildRequest = useCallback(() => ({
+    origin:      originCoords,
+    destination: destCoords,
+    preferences: {
+      user_profile: (vehicleMode === 'wheelchair' ? 'wheelchair' : isFootMode(vehicleMode) ? selectedProfile : 'general') as any,
+      transport_mode: (isFootMode(vehicleMode) ? 'walking' : vehicleMode === 'cycling' ? 'cycling' : 'driving') as any,
+    },
+  }), [originCoords, destCoords, selectedProfile, vehicleMode]);
 
   const handleFindRoutes = useCallback(async () => {
     if (!destText.trim()) { toast.error('Please enter a destination'); return; }
@@ -354,24 +377,63 @@ export default function MapPage() {
     setSelectedRoute(null);
     setInstructionIdx(0);
     setRestStops([]);
-    await fetchRoutes({
-      origin:      originCoords,
-      destination: destCoords,
-      preferences: { user_profile: selectedProfile as any, transport_mode: vehicleMode === 'pedestrian' ? 'walking' : 'driving' },
-    }, vehicleMode);
-  }, [originCoords, destCoords, selectedProfile, vehicleMode, fetchRoutes, clearRoutes, destText]);
+    setRerouteNote(null);
+    await fetchRoutes(buildRequest(), vehicleMode);
+  }, [buildRequest, vehicleMode, fetchRoutes, clearRoutes, destText]);
+
+  // ── Dynamic rerouting (live incidents) ─────────────────────────────────────
+  // A route is selected -> watch its corridor. When a report appears / is confirmed / expires,
+  // silently re-score ALL routes and explain what changed (or that nothing relevant changed).
+  const pendingRefresh = useRef<{ keys: Set<string>; topKm: number } | null>(null);
+
+  const refreshRoutes = useCallback(async () => {
+    if (!routes.length) return;
+    const keys = new Set<string>();
+    routes.forEach((r) => (r.hazards ?? []).forEach((h) => keys.add(`${h.report_id ?? h.type}@${h.lat.toFixed(4)},${h.lng.toFixed(4)}`)));
+    pendingRefresh.current = { keys, topKm: routes[0].distance_km };
+    await fetchRoutes(buildRequest(), vehicleMode);
+  }, [routes, fetchRoutes, buildRequest, vehicleMode]);
+
+  const watch = useIncidentWatch(selectedRoute?.coordinates, !!selectedRoute && !selectedRoute.id.startsWith('fallback'));
+  useEffect(() => { if (watch.changeTick > 0) refreshRoutes(); }, [watch.changeTick]);
+
+  useEffect(() => {
+    const snap = pendingRefresh.current;
+    if (!snap || loading || !routes.length) return;
+    pendingRefresh.current = null;
+    const added: any[] = [];
+    routes.forEach((r) => (r.hazards ?? []).forEach((h) => {
+      const k = `${h.report_id ?? h.type}@${h.lat.toFixed(4)},${h.lng.toFixed(4)}`;
+      if (!snap.keys.has(k) && h.kind === 'community' && !added.find((a) => a.label === h.label)) added.push(h);
+    }));
+    const topChanged = Math.abs(routes[0].distance_km - snap.topKm) > 0.1;
+    const what = added.slice(0, 2).map((h) => `${h.simulated ? '🧪 simulated ' : ''}${h.type.replace('_', ' ')} near km ${(h.along_m / 1000).toFixed(1)}`).join(', ');
+    setRerouteNote(added.length
+      ? `🔄 New incident reported (${what}). Routes re-scored — ${topChanged ? 'the recommended route changed to avoid it.' : 'the recommended route is unchanged.'}`
+      : '🔄 Incident data updated — routes re-scored, no change to your recommendation.');
+    const t = setTimeout(() => setRerouteNote(null), 22000);
+    return () => clearTimeout(t);
+  }, [routes, loading]);
 
   // ✅ Real rest stops (benches/shelters/toilets/water) fetched live from
   // OpenStreetMap once a route is selected — only for pedestrian mode,
   // since rest stops matter for people walking, not vehicles.
   useEffect(() => {
-    if (vehicleMode !== 'pedestrian' || !selectedRoute?.coordinates?.length) { setRestStops([]); return; }
+    if (!isFootMode(vehicleMode) || !selectedRoute?.coordinates?.length) { setRestStops([]); return; }
     let cancelled = false;
     fetchRestStopsAlongRoute(selectedRoute.coordinates).then((stops) => {
       if (!cancelled) setRestStops(stops);
     });
     return () => { cancelled = true; };
   }, [selectedRoute, vehicleMode]);
+
+  useEffect(() => {
+    // after the server silently refreshes routes (street data finished loading) keep a valid selection
+    if (routes.length > 0 && selectedRoute && !routes.find((r) => r.id === selectedRoute.id)) {
+      const same = routes.find((r) => r.name === selectedRoute.name) ?? routes[0];
+      setSelectedRoute(same);
+    }
+  }, [routes]);
 
   useEffect(() => {
     if (routes.length > 0 && !selectedRoute) {
@@ -385,82 +447,8 @@ export default function MapPage() {
     if (instr) { speak(instr); setInstructionIdx(idx); }
   }, [selectedRoute, speak]);
 
-  return (
-    <div className={`h-screen bg-[#05080F] flex flex-col overflow-hidden ${a11y ? 'pt-8' : ''}`}>
-
-      {a11y && (
-        <div className="fixed top-0 left-0 right-0 z-50 bg-[#00FF9C] text-[#05080F] text-xs font-mono py-1.5 px-4 flex items-center justify-between">
-          <span className="flex items-center gap-2">
-            <Accessibility className="w-3.5 h-3.5" />
-            ACCESSIBILITY MODE — High Contrast · Large Text
-          </span>
-          <button onClick={toggleA11y} className="underline font-bold">Disable</button>
-        </div>
-      )}
-
-      {/* Top bar */}
-      <div className="flex-shrink-0 z-30 border-b border-[#00E5FF]/10 bg-[#05080F]/95 backdrop-blur-lg">
-        <div className="flex items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="text-[#8892B0] hover:text-[#00E5FF] transition-colors">
-              <ArrowLeft className="w-4 h-4" />
-            </Link>
-            <div className="flex items-center gap-2">
-              <Navigation className="w-4 h-4 text-[#00FF9C]" />
-              <span className="font-bold text-[#E6F1FF] text-sm">
-                Street<span className="text-[#00FF9C]">Smart</span>
-                <span className="ml-2 font-mono text-xs text-[#8892B0]">Navigator</span>
-              </span>
-            </div>
-            <div className={`hidden sm:flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full border ${
-              gpsStatus === 'ready'     ? 'text-[#00FF9C] border-[#00FF9C]/30 bg-[#00FF9C]/10'
-              : gpsStatus === 'detecting' ? 'text-[#00E5FF] border-[#00E5FF]/30 bg-[#00E5FF]/10'
-              : 'text-[#FFB020] border-[#FFB020]/30 bg-[#FFB020]/10'
-            }`}>
-              {gpsStatus === 'detecting' && <><Loader2 className="w-2.5 h-2.5 animate-spin" /> GPS...</>}
-              {gpsStatus === 'ready'     && <><span className="w-1.5 h-1.5 rounded-full bg-[#00FF9C] animate-pulse inline-block" /> LIVE GPS</>}
-              {gpsStatus === 'denied'    && <><MapPin className="w-2.5 h-2.5" /> MANUAL</>}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <button onClick={toggleA11y}
-              className={`p-2 rounded-lg border transition-all ${a11y ? 'border-[#00FF9C]/60 bg-[#00FF9C]/10 text-[#00FF9C]' : 'border-[#1a2a4a] text-[#8892B0] hover:text-[#00FF9C]'}`}>
-              <Accessibility className="w-4 h-4" />
-            </button>
-            <button onClick={() => setShowHeatmap((v) => !v)}
-              className={`p-2 rounded-lg border transition-all ${showHeatmap ? 'border-[#FFB020]/60 bg-[#FFB020]/10 text-[#FFB020]' : 'border-[#1a2a4a] text-[#8892B0] hover:text-[#FFB020]'}`}>
-              <Layers className="w-4 h-4" />
-            </button>
-            <button onClick={() => setShowBlackSpots((v) => !v)}
-              title="Toggle black spots — community-reported unsafe areas"
-              className={`p-2 rounded-lg border transition-all ${showBlackSpots ? 'border-[#FF3B3B]/60 bg-[#FF3B3B]/10 text-[#FF3B3B]' : 'border-[#1a2a4a] text-[#8892B0] hover:text-[#FF3B3B]'}`}>
-              <AlertTriangle className="w-4 h-4" />
-            </button>
-            <button onClick={() => { setAudioEnabled((v) => !v); if (speaking) stop(); }}
-              className={`p-2 rounded-lg border transition-all ${audioEnabled ? 'border-[#B388FF]/60 bg-[#B388FF]/10 text-[#B388FF]' : 'border-[#1a2a4a] text-[#8892B0] hover:text-[#B388FF]'}`}>
-              {audioEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-            </button>
-            {username && <span className="text-xs font-mono text-[#00FF9C]">👤 {username}</span>}
-            <button onClick={handleLogout}
-              className="p-2 rounded-lg border border-[#FF3B3B]/40 text-[#FF3B3B] hover:bg-[#FF3B3B]/10 text-xs font-mono transition-all">
-              Logout
-            </button>
-            <button onClick={() => setSidebarOpen((v) => !v)}
-              className="p-2 rounded-lg border border-[#1a2a4a] text-[#8892B0] hover:text-[#00E5FF] transition-all">
-              <ChevronRight className={`w-4 h-4 transition-transform ${sidebarOpen ? 'rotate-180' : ''}`} />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex flex-1 overflow-hidden">
-
-        <AnimatePresence initial={false}>
-          {sidebarOpen && (
-            <motion.div initial={{ width:0, opacity:0 }} animate={{ width:340, opacity:1 }} exit={{ width:0, opacity:0 }} transition={{ duration:0.2 }}
-              className="flex-shrink-0 h-full overflow-y-auto border-r border-[#00E5FF]/08 bg-[#05080F]/95 z-20" style={{ minWidth:0 }}>
-              <div className="p-4 space-y-4">
+  const sidebarContent = (
+<div className="p-4 space-y-4">
 
                 {gpsStatus === 'detecting' && (
                   <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#00E5FF]/10 border border-[#00E5FF]/30 text-[#00E5FF] text-xs font-mono">
@@ -522,7 +510,7 @@ export default function MapPage() {
                   <VehicleModeSelector selected={vehicleMode} onChange={setVehicleMode} />
                 </NeonCard>
 
-                {vehicleMode === 'pedestrian' && (
+                {vehicleMode === 'walking' && (
                   <NeonCard color="#00E5FF">
                     <p className="text-[10px] font-mono text-[#00E5FF] font-semibold tracking-wider mb-3">USER PROFILE</p>
                     <PreferenceSelector selected={selectedProfile} onChange={setSelectedProfile} />
@@ -557,7 +545,14 @@ export default function MapPage() {
                 <AnimatePresence>
                   {routes.length > 0 && (
                     <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} className="space-y-3">
-                      <p className="text-[10px] font-mono text-[#8892B0] tracking-wider px-1">{routes.length} SAFE ROUTES FOUND</p>
+                      <p className="text-[10px] font-mono text-[#8892B0] tracking-wider px-1">{routes.length} ROUTE{routes.length > 1 ? 'S' : ''} FOUND{routeMeta?.is_night ? ' · 🌙 NIGHT' : ' · ☀️ DAYLIGHT'}</p>
+                      {routeError && <p className="text-[10px] font-mono text-[#FFB020] px-1">{routeError}</p>}
+                      {refining && <p className="text-[10px] font-mono text-[#00E5FF] px-1">⏳ Street data finished loading — refining scores…</p>}
+                      <DemoPanel route={selectedRoute} onChanged={refreshRoutes} />
+                      {selectedRoute && <div className="md:hidden"><MapLegend route={selectedRoute} /></div>}
+                      {(routeMeta?.data_quality?.notes ?? []).map((n, i) => (
+                        <p key={i} className="text-[10px] font-mono text-[#8892B0] px-1 leading-snug">ℹ️ {n}</p>
+                      ))}
                       {routes.map((route) => (
                         <RouteCard key={route.id} route={route} rank={route.rank ?? 1}
                           isSelected={selectedRoute?.id === route.id}
@@ -625,8 +620,8 @@ export default function MapPage() {
                         <div className="text-xs text-[#8892B0] mt-1">Safety Score</div>
                       </div>
                       <div className="text-center p-3 bg-[#0B1020] rounded-xl border border-[#00E5FF]/20">
-                        <div className="text-3xl font-bold font-mono text-[#00E5FF]">{selectedRoute.duration_min}m</div>
-                        <div className="text-xs text-[#8892B0] mt-1">Walk Time</div>
+                        <div className="text-3xl font-bold font-mono text-[#00E5FF]">{formatDuration(selectedRoute.duration_min)}</div>
+                        <div className="text-xs text-[#8892B0] mt-1">{selectedRoute.eta?.mode_label ?? 'Travel'} time</div>
                       </div>
                     </div>
                     <GlowButton color="green" size="lg" className="w-full" onClick={() => handlePlayInstruction(0)}>
@@ -635,6 +630,84 @@ export default function MapPage() {
                   </NeonCard>
                 )}
               </div>
+  );
+
+  return (
+    <div className={`h-[calc(100dvh_-_56px)] bg-[#05080F] flex flex-col overflow-hidden ${a11y ? 'pt-8' : ''}`}>
+
+      {a11y && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-[#00FF9C] text-[#05080F] text-xs font-mono py-1.5 px-4 flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <Accessibility className="w-3.5 h-3.5" />
+            ACCESSIBILITY MODE — High Contrast · Large Text
+          </span>
+          <button onClick={toggleA11y} className="underline font-bold">Disable</button>
+        </div>
+      )}
+
+      {/* Top bar */}
+      <div className="flex-shrink-0 z-30 border-b border-[#00E5FF]/10 bg-[#05080F]/95 backdrop-blur-lg">
+        <div className="flex items-center justify-between px-2 md:px-4 py-2 md:py-3">
+          <div className="flex items-center gap-3">
+            <Link href="/" className="text-[#8892B0] hover:text-[#00E5FF] transition-colors">
+              <ArrowLeft className="w-4 h-4" />
+            </Link>
+            <div className="flex items-center gap-2">
+              <Navigation className="w-4 h-4 text-[#00FF9C]" />
+              <span className="font-bold text-[#E6F1FF] text-sm">
+                Street<span className="text-[#00FF9C]">Smart</span>
+                <span className="ml-2 font-mono text-xs text-[#8892B0] hidden sm:inline">Navigator</span>
+              </span>
+            </div>
+            <div className={`hidden sm:flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full border ${
+              gpsStatus === 'ready'     ? 'text-[#00FF9C] border-[#00FF9C]/30 bg-[#00FF9C]/10'
+              : gpsStatus === 'detecting' ? 'text-[#00E5FF] border-[#00E5FF]/30 bg-[#00E5FF]/10'
+              : 'text-[#FFB020] border-[#FFB020]/30 bg-[#FFB020]/10'
+            }`}>
+              {gpsStatus === 'detecting' && <><Loader2 className="w-2.5 h-2.5 animate-spin" /> GPS...</>}
+              {gpsStatus === 'ready'     && <><span className="w-1.5 h-1.5 rounded-full bg-[#00FF9C] animate-pulse inline-block" /> LIVE GPS</>}
+              {gpsStatus === 'denied'    && <><MapPin className="w-2.5 h-2.5" /> MANUAL</>}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1 md:gap-1.5">
+            <button onClick={toggleA11y}
+              className={`p-1.5 md:p-2 rounded-lg border transition-all ${a11y ? 'border-[#00FF9C]/60 bg-[#00FF9C]/10 text-[#00FF9C]' : 'border-[#1a2a4a] text-[#8892B0] hover:text-[#00FF9C]'}`}>
+              <Accessibility className="w-4 h-4" />
+            </button>
+            <button onClick={() => setShowHeatmap((v) => !v)}
+              className={`p-1.5 md:p-2 rounded-lg border transition-all ${showHeatmap ? 'border-[#FFB020]/60 bg-[#FFB020]/10 text-[#FFB020]' : 'border-[#1a2a4a] text-[#8892B0] hover:text-[#FFB020]'}`}>
+              <Layers className="w-4 h-4" />
+            </button>
+            <button onClick={() => setShowBlackSpots((v) => !v)}
+              title="Toggle black spots — community-reported unsafe areas"
+              className={`p-1.5 md:p-2 rounded-lg border transition-all ${showBlackSpots ? 'border-[#FF3B3B]/60 bg-[#FF3B3B]/10 text-[#FF3B3B]' : 'border-[#1a2a4a] text-[#8892B0] hover:text-[#FF3B3B]'}`}>
+              <AlertTriangle className="w-4 h-4" />
+            </button>
+            <button onClick={() => { setAudioEnabled((v) => !v); if (speaking) stop(); }}
+              className={`p-1.5 md:p-2 rounded-lg border transition-all ${audioEnabled ? 'border-[#B388FF]/60 bg-[#B388FF]/10 text-[#B388FF]' : 'border-[#1a2a4a] text-[#8892B0] hover:text-[#B388FF]'}`}>
+              {audioEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
+            {username && <span className="hidden md:inline text-xs font-mono text-[#00FF9C]">👤 {username}</span>}
+            <button onClick={handleLogout}
+              className="p-1.5 md:p-2 rounded-lg border border-[#FF3B3B]/40 text-[#FF3B3B] hover:bg-[#FF3B3B]/10 text-xs font-mono transition-all">
+              Logout
+            </button>
+            <button onClick={() => setSidebarOpen((v) => !v)}
+              className="hidden md:block p-2 rounded-lg border border-[#1a2a4a] text-[#8892B0] hover:text-[#00E5FF] transition-all">
+              <ChevronRight className={`w-4 h-4 transition-transform ${sidebarOpen ? 'rotate-180' : ''}`} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-1 overflow-hidden">
+
+        <AnimatePresence initial={false}>
+          {!isMobile && sidebarOpen && (
+            <motion.div initial={{ width:0, opacity:0 }} animate={{ width:340, opacity:1 }} exit={{ width:0, opacity:0 }} transition={{ duration:0.2 }}
+              className="flex-shrink-0 h-full overflow-y-auto border-r border-[#00E5FF]/08 bg-[#05080F]/95 z-20" style={{ minWidth:0 }}>
+              {sidebarContent}
             </motion.div>
           )}
         </AnimatePresence>
@@ -647,12 +720,57 @@ export default function MapPage() {
             onRouteSelect={(r) => { setSelectedRoute(r); if (audioEnabled) speak(`${r.name} selected.`); }} />
 
           {selectedRoute && !a11y && (
-            <div className="absolute top-4 right-4 z-20"><HUDPanel route={selectedRoute} /></div>
+            <div className="absolute top-4 right-4 z-20 hidden md:block"><HUDPanel route={selectedRoute} /></div>
+          )}
+          {selectedRoute && (
+            <div className="absolute bottom-8 left-4 z-20 hidden md:block"><MapLegend route={selectedRoute} /></div>
+          )}
+          {rerouteNote && (
+            <div className="absolute top-16 md:top-4 left-2 right-2 md:left-1/2 md:right-auto md:-translate-x-1/2 z-30 md:max-w-[560px] glass-panel rounded-xl px-4 py-2.5 border border-[#00E5FF]/40 text-xs font-mono text-[#E6F1FF]">
+              {rerouteNote}
+              <button onClick={() => setRerouteNote(null)} className="ml-3 text-[#8892B0]">✕</button>
+            </div>
+          )}
+          <div className="absolute left-3 right-3 md:right-auto md:left-4 md:bottom-24 z-30" style={isMobile ? { bottom: `calc(${SHEET_H[sheet]} + 12px)` } : undefined}>
+            <NearbyConfirm prompt={nearby.prompt} onAnswer={nearby.answer} onSkip={nearby.skip} />
+          </div>
+
+
+          {/* ───────── PHONE ONLY: navigation bar on the map ───────── */}
+          {isMobile && selectedRoute && (selectedRoute.audio_instructions?.length ?? 0) > 0 && (
+            <div className="absolute top-2 left-14 right-2 z-30 glass-panel rounded-xl px-3 py-2 border border-[#B388FF]/40 flex items-center gap-2">
+              <button onClick={() => handlePlayInstruction(Math.max(0, instructionIdx - 1))}
+                className="text-[#8892B0] px-1 text-sm" aria-label="Previous instruction">◀</button>
+              <div className="flex-1 min-w-0">
+                <div className="text-[9px] font-mono text-[#B388FF] tracking-wider">
+                  STEP {instructionIdx + 1}/{selectedRoute.audio_instructions.length} · {selectedRoute.eta?.mode_label ?? ''} {formatDuration(selectedRoute.duration_min)}
+                </div>
+                <div className="text-xs text-[#E6F1FF] leading-snug line-clamp-2">{selectedRoute.audio_instructions[Math.min(instructionIdx, selectedRoute.audio_instructions.length - 1)]}</div>
+              </div>
+              <button onClick={() => handlePlayInstruction(Math.min(selectedRoute.audio_instructions.length - 1, instructionIdx + 1))}
+                className="text-[#B388FF] px-1 text-sm" aria-label="Next instruction">▶</button>
+            </div>
+          )}
+
+          {/* ───────── PHONE ONLY: slide-up panel (replaces the 340px side panel) ───────── */}
+          {isMobile && (
+            <div className="absolute inset-x-0 bottom-0 z-40 flex flex-col rounded-t-2xl border-t border-[#00E5FF]/25 bg-[#05080F]/97 backdrop-blur-lg shadow-[0_-12px_30px_rgba(0,0,0,0.55)] transition-[height] duration-200"
+              style={{ height: SHEET_H[sheet], paddingBottom: 'env(safe-area-inset-bottom)' }}>
+              <button onClick={cycleSheet} className="w-full pt-2 pb-1.5 flex flex-col items-center flex-shrink-0" aria-label="Expand or collapse panel">
+                <span className="w-10 h-1.5 rounded-full bg-[#8892B0]/50" />
+                <span className="text-[10px] font-mono text-[#8892B0] mt-1">
+                  {selectedRoute ? `${selectedRoute.distance_km.toFixed(1)} km · ${formatDuration(selectedRoute.duration_min)} · ` : ''}
+                  {sheet === 'peek' ? '▲ tap for route options' : sheet === 'half' ? '▲ tap for full panel' : '▼ tap to see map'}
+                </span>
+              </button>
+              <div className="flex-1 overflow-y-auto overscroll-contain pb-28">{sidebarContent}</div>
+            </div>
           )}
 
           {voiceOk && (
             <motion.button whileTap={{ scale:0.9 }} onClick={listening ? stopListening : startListening}
-              className={`absolute bottom-8 right-6 z-20 w-14 h-14 rounded-full flex items-center justify-center shadow-2xl border-2 transition-all duration-300 ${
+              style={isMobile ? { bottom: `calc(${SHEET_H[sheet]} + 12px)` } : undefined}
+              className={`absolute md:bottom-8 right-4 md:right-6 z-20 w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center shadow-2xl border-2 transition-all duration-300 ${
                 listening ? 'bg-[#FF3B3B] border-[#FF3B3B] shadow-[0_0_30px_#FF3B3B60] animate-pulse' : 'bg-[#0B1020] border-[#00E5FF]/40 shadow-[0_0_20px_#00E5FF20] hover:border-[#00E5FF]'
               }`}>
               {listening ? <MicOff className="w-6 h-6 text-white" /> : <Mic className="w-6 h-6 text-[#00E5FF]" />}
@@ -660,7 +778,8 @@ export default function MapPage() {
           )}
 
           <motion.button whileTap={{ scale:0.9 }} onClick={handleLocateMe}
-            className="absolute bottom-8 left-6 z-20 w-12 h-12 rounded-full flex items-center justify-center bg-[#0B1020] border-2 border-[#00FF9C]/40 shadow-[0_0_20px_#00FF9C20] hover:border-[#00FF9C] transition-all">
+            style={isMobile ? { bottom: `calc(${SHEET_H[sheet]} + 12px)` } : undefined}
+            className="absolute md:bottom-8 left-4 md:left-6 z-20 w-11 h-11 md:w-12 md:h-12 rounded-full flex items-center justify-center bg-[#0B1020] border-2 border-[#00FF9C]/40 shadow-[0_0_20px_#00FF9C20] hover:border-[#00FF9C] transition-all">
             <LocateFixed className={`w-5 h-5 ${gpsStatus === 'detecting' ? 'text-[#FFB020] animate-spin' : 'text-[#00FF9C]'}`} />
           </motion.button>
         </div>

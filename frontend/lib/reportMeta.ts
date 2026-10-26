@@ -7,6 +7,10 @@ export const ISSUE_TYPES = [
   { value: 'harassment',      label: 'Harassment Report', icon: '🚨', color: '#FF3B3B' },
   { value: 'flooding',        label: 'Flooding',          icon: '💧', color: '#00E5FF' },
   { value: 'obstruction',     label: 'Obstruction',       icon: '🚫', color: '#FF3B3B' },
+  { value: 'pothole',        label: 'Broken Road / Pothole', icon: '🕳️', color: '#FFB020' },
+  { value: 'accident',       label: 'Accident',         icon: '💥', color: '#FF3B3B' },
+  { value: 'crowd',          label: 'Sudden Crowd',     icon: '👥', color: '#FFB020' },
+  { value: 'road_blocked',   label: 'Road Blocked',     icon: '⛔', color: '#FF0000' },
 ];
 
 export const SEVERITIES = [
