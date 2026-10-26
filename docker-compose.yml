@@ -1,0 +1,59 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgis/postgis:15-3.3
+    container_name: streetsmart_db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-streetsmart}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-streetsmart123}
+      POSTGRES_DB: ${POSTGRES_DB:-streetsmart_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U streetsmart"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: streetsmart_backend
+    environment:
+      - DATABASE_URL=postgresql://streetsmart:streetsmart123@postgres:5432/streetsmart_db
+      - SECRET_KEY=${SECRET_KEY:-neon-noir-smart-city-secret-key-2024}
+      - MAPBOX_SECRET_TOKEN=${MAPBOX_SECRET_TOKEN}
+      - BACKEND_CORS_ORIGINS=["http://localhost:3000"]
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - ./ml:/app/ml
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: streetsmart_frontend
+    environment:
+      - NEXT_PUBLIC_MAPBOX_TOKEN=${NEXT_PUBLIC_MAPBOX_TOKEN}
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+
+volumes:
+  postgres_data:

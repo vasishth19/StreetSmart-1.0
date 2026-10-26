@@ -1,0 +1,15 @@
+{
+  "_readme": "Edit time_multiplier after you measure real trips. Example: you walk a 5.0 km route and it takes 62 min but the app said 60 -> set walking to 1.03. 1.0 = no correction. Keep a note of how you measured it (date, route, GPS app) so you can show mentors.",
+  "time_multiplier": {
+    "walking": 1.0,
+    "walking_elderly": 1.0,
+    "walking_low_vision": 1.0,
+    "wheelchair": 1.0,
+    "cycling": 1.0,
+    "motorcycle": 1.0,
+    "car": 1.0,
+    "ambulance": 1.0,
+    "fire": 1.0,
+    "police": 1.0
+  }
+}
