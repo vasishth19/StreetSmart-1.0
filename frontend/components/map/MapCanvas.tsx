@@ -2,9 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { RouteResult } from '@/services/api';
-// ─── Install these packages ───────────────────────────────────────────────────
-// npm install leaflet leaflet.heat @types/leaflet
-// ─────────────────────────────────────────────────────────────────────────────
+// Leaflet + leaflet.heat are loaded from a CDN at runtime (no npm install, no API key).
 
 declare global {
   interface Window {
@@ -38,7 +36,7 @@ export interface BlackSpotReport {
   created_at: string;
 }
 
-// ─── Route color palette (matches your existing theme) ───────────────────────
+// ─── Route color palette ─────────────────────────────────────────────────────
 const ROUTE_COLORS = ['#00FF9C', '#00E5FF', '#B388FF', '#FFB020', '#FF6B6B'];
 const UNSELECTED_OPACITY = 0.45;
 
@@ -47,7 +45,6 @@ function loadLeaflet(): Promise<void> {
   if (window._leafletLoaded && window.L) return Promise.resolve();
 
   return new Promise((resolve, reject) => {
-    // Leaflet CSS
     if (!document.getElementById('leaflet-css')) {
       const link = document.createElement('link');
       link.id = 'leaflet-css';
@@ -63,12 +60,10 @@ function loadLeaflet(): Promise<void> {
       return;
     }
 
-    // Leaflet JS
     const script = document.createElement('script');
     script.id = 'leaflet-js';
     script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
     script.onload = () => {
-      // leaflet.heat plugin (for heatmap support)
       const heatScript = document.createElement('script');
       heatScript.src = 'https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js';
       heatScript.onload = () => { window._leafletLoaded = true; resolve(); };
@@ -80,7 +75,7 @@ function loadLeaflet(): Promise<void> {
   });
 }
 
-// ─── Custom SVG marker (same design as your Google Maps version) ──────────────
+// ─── Marker icons ─────────────────────────────────────────────────────────────
 function makeMarkerIcon(L: any, color: string, label: string): any {
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="36" height="48" viewBox="0 0 36 48">
@@ -174,10 +169,10 @@ function makeLiveIcon(L: any, heading: number | null): any {
   return L.divIcon({ html: svg, className: '', iconSize: [34, 34], iconAnchor: [17, 17] });
 }
 
-// ─── Dark tile layer (matches app theme) ─────────────────────────────────────
-// Using CartoDB Dark Matter — free, no API key required
-const DARK_TILE_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-const TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
+// ─── Map tiles: standard OpenStreetMap — free, NO API KEY ────────────────────
+const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const TILE_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 export default function MapCanvas({
   selectedRoute,
@@ -201,7 +196,6 @@ export default function MapCanvas({
   const blackSpotMarkersRef = useRef<any[]>([]);
   const restStopMarkersRef = useRef<any[]>([]);
   const liveMarkerRef = useRef<any>(null);
-  const pulseRef     = useRef<HTMLDivElement | null>(null);
 
   const [mapReady, setMapReady] = useState(false);
   const [error, setError]       = useState<string | null>(null);
@@ -222,21 +216,13 @@ export default function MapCanvas({
           attributionControl: true,
         });
 
-        // Dark tile layer (CartoDB Dark Matter — free, no key)
-        L.tileLayer(DARK_TILE_URL, {
+        // OpenStreetMap tiles (no key)
+        L.tileLayer(TILE_URL, {
           attribution: TILE_ATTRIBUTION,
           maxZoom: 19,
-          subdomains: 'abcd',
         }).addTo(map);
 
-        // Zoom control (right side to match your layout)
         L.control.zoom({ position: 'bottomright' }).addTo(map);
-
-        // Fix attribution style
-        const attrEl = map.getContainer().querySelector('.leaflet-control-attribution') as HTMLElement;
-        if (attrEl) {
-          attrEl.style.cssText = 'background:#05080F!important;color:#4A5568!important;font-size:10px;';
-        }
 
         mapInstance.current = map;
         setMapReady(true);
@@ -252,7 +238,7 @@ export default function MapCanvas({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Origin marker + pulsing ring ───────────────────────────────────────────
+  // ── Origin marker ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!mapReady || !mapInstance.current) return;
     const L = window.L;
@@ -318,7 +304,6 @@ export default function MapCanvas({
     const L = window.L;
     const map = mapInstance.current;
 
-    // Clear old polylines
     polylinesRef.current.forEach((p) => p.remove());
     polylinesRef.current = [];
 
@@ -326,32 +311,24 @@ export default function MapCanvas({
 
     routes.forEach((route, idx) => {
       const isSelected = selectedRoute?.id === route.id;
-      // Use the route's own semantic color (Women Safe = pink, Accessible = blue,
-      // Smart/Safe = green, priority vehicle colors, etc.) so the line on the map
-      // always matches the label/legend. Falls back to the palette only if a
-      // route ever comes through with no color assigned.
       const color = (route as any).color || ROUTE_COLORS[idx % ROUTE_COLORS.length];
 
-      // Decode path — supports encoded polyline string, GeoJSON-style arrays,
-      // or the StreetSmart backend's own `coordinates: [[lng, lat], ...]` field
       let path: [number, number][] = [];
 
       const routeGeometry = (route as any).geometry;
       if (routeGeometry) {
         if (typeof routeGeometry === 'string') {
-          // Decode Google-encoded polyline manually (no Google lib needed)
           path = decodePolyline(routeGeometry);
         } else if (Array.isArray(routeGeometry)) {
           path = (routeGeometry as any[]).map((pt: any) =>
             Array.isArray(pt)
-              ? [pt[1], pt[0]] as [number, number]   // GeoJSON [lng, lat]
+              ? [pt[1], pt[0]] as [number, number]
               : [pt.lat ?? pt.latitude, pt.lng ?? pt.longitude] as [number, number]
           );
         }
       }
 
       if (!path.length && Array.isArray((route as any).coordinates)) {
-        // Backend RouteResult.coordinates is [[lng, lat], ...]
         path = (route as any).coordinates.map(
           (pt: number[]) => [pt[1], pt[0]] as [number, number]
         );
@@ -368,16 +345,14 @@ export default function MapCanvas({
       const segs: any[] = Array.isArray((route as any).segments) ? (route as any).segments : [];
       const hasSegs = isSelected && segs.length > 0 && segs.every((sg) => Array.isArray(sg.coordinates) && sg.coordinates.length > 1);
 
-      // Walking / wheelchair = DOTTED line (like Google Maps); vehicles = solid line
-      // coloured by traffic (green = flowing, yellow = slow, red = heavy).
+      // Walking / wheelchair = DOTTED line; vehicles = solid line coloured by traffic.
       const styleFor = (c: string, selected: boolean) => dotted
         ? { color: c, weight: selected ? 6 : 4, opacity: selected ? 0.95 : UNSELECTED_OPACITY + 0.1, dashArray: '1 11', lineCap: 'round' as const, lineJoin: 'round' as const }
         : { color: c, weight: selected ? 6 : 3, opacity: selected ? 0.95 : UNSELECTED_OPACITY, lineCap: 'round' as const, lineJoin: 'round' as const };
 
       if (isSelected) {
-        // white casing so the colours stay readable on the dark map
         polylinesRef.current.push(L.polyline(path, {
-          color: '#05080F', weight: dotted ? 10 : 10, opacity: dotted ? 0.0 : 0.65, interactive: false, lineCap: 'round',
+          color: '#05080F', weight: 10, opacity: dotted ? 0.0 : 0.65, interactive: false, lineCap: 'round',
         }).addTo(map));
       }
 
@@ -438,7 +413,6 @@ export default function MapCanvas({
       });
     }
 
-    // Fallback demo points
     if (!heatPoints.length) {
       for (let i = 0; i < 30; i++) {
         heatPoints.push([
@@ -533,7 +507,7 @@ export default function MapCanvas({
     };
   }, [mapReady, blackSpots, showBlackSpots]);
 
-  // ── Hazards that affect the SELECTED route (community reports, SOS clusters, OSM) ──
+  // ── Hazards that affect the SELECTED route ─────────────────────────────────
   const hazardMarkersRef = useRef<any[]>([]);
   useEffect(() => {
     if (!mapReady || !mapInstance.current) return;
@@ -560,7 +534,7 @@ export default function MapCanvas({
     return () => { hazardMarkersRef.current.forEach((m) => m.remove()); hazardMarkersRef.current = []; };
   }, [mapReady, selectedRoute]);
 
-  // ── Fit the map to the selected route ──
+  // ── Fit the map to the selected route ──────────────────────────────────────
   useEffect(() => {
     if (!mapReady || !mapInstance.current || !selectedRoute?.coordinates?.length) return;
     const L = window.L;
@@ -568,7 +542,7 @@ export default function MapCanvas({
     mapInstance.current.fitBounds(b, { padding: [60, 60] });
   }, [mapReady, selectedRoute?.id]);
 
-  // ── Real rest stops (benches/shelters/toilets/water) from OpenStreetMap ────
+  // ── Rest stops from OpenStreetMap ──────────────────────────────────────────
   useEffect(() => {
     if (!mapReady || !mapInstance.current) return;
     const L = window.L;
@@ -594,7 +568,7 @@ export default function MapCanvas({
     };
   }, [mapReady, restStops]);
 
-  // ── Real live GPS position (device's actual location, updates in real time) ─
+  // ── Live GPS position ──────────────────────────────────────────────────────
   useEffect(() => {
     if (!mapReady || !mapInstance.current) return;
     const L = window.L;
@@ -632,10 +606,8 @@ export default function MapCanvas({
 
   return (
     <div className="relative w-full h-full">
-      {/* Leaflet map container */}
       <div ref={mapRef} className="w-full h-full" />
 
-      {/* Loading overlay */}
       {!mapReady && (
         <div className="absolute inset-0 bg-[#05080F] flex items-center justify-center z-10">
           <div className="text-center space-y-3">
@@ -645,9 +617,11 @@ export default function MapCanvas({
         </div>
       )}
 
-      {/* Override Leaflet default styles to match dark theme */}
       <style>{`
         .leaflet-container { background: #05080F !important; }
+        /* Dark look for the OpenStreetMap tiles only (markers and routes are not affected).
+           Delete the next line if you prefer the normal light map. */
+        .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.95); }
         .leaflet-control-zoom a {
           background: #0B1020 !important;
           border: 1px solid #1a2a4a !important;
@@ -661,7 +635,6 @@ export default function MapCanvas({
         }
         .leaflet-control-attribution a { color: #4A6C8C !important; }
         .leaflet-bar { border: 1px solid #1a2a4a !important; box-shadow: none !important; }
-        /* Remove default marker styling since we use custom SVG */
         .leaflet-div-icon { background: transparent !important; border: none !important; }
         .ss-tip { background:#0B1020 !important; color:#E6F1FF !important; border:1px solid #1a2a4a !important; font:11px monospace !important; }
       `}</style>
@@ -669,7 +642,7 @@ export default function MapCanvas({
   );
 }
 
-// ─── Pure-JS Google encoded polyline decoder (no Google SDK needed) ───────────
+// ─── Google encoded polyline decoder (pure JS) ────────────────────────────────
 function decodePolyline(encoded: string): [number, number][] {
   const points: [number, number][] = [];
   let index = 0, lat = 0, lng = 0;
@@ -685,7 +658,7 @@ function decodePolyline(encoded: string): [number, number][] {
   return points;
 }
 
-// ─── Simple directional arrow marker at midpoint ──────────────────────────────
+// ─── Directional arrow marker ─────────────────────────────────────────────────
 function createArrowDecorator(L: any, map: any, from: [number, number], to: [number, number], color: string) {
   const angle = Math.atan2(to[1] - from[1], to[0] - from[0]) * (180 / Math.PI);
   const svg = `
