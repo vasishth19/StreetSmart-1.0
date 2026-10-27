@@ -381,6 +381,26 @@ export default function MapPage() {
     await fetchRoutes(buildRequest(), vehicleMode);
   }, [buildRequest, vehicleMode, fetchRoutes, clearRoutes, destText]);
 
+    // Re-route automatically when the travel mode changes (no need to retype from/to)
+  const hasSearched = useRef(false);
+  const prevMode = useRef(vehicleMode);
+  useEffect(() => {
+    if (routes.length > 0 || loading) hasSearched.current = true;
+  }, [routes.length, loading]);
+
+  useEffect(() => {
+    if (prevMode.current === vehicleMode) return;
+    prevMode.current = vehicleMode;
+    if (!hasSearched.current || !destText.trim()) return;
+    clearRoutes();
+    setSelectedRoute(null);
+    setInstructionIdx(0);
+    setRestStops([]);
+    setRerouteNote(null);
+    fetchRoutes(buildRequest(), vehicleMode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicleMode]);
+
   // ── Dynamic rerouting (live incidents) ─────────────────────────────────────
   // A route is selected -> watch its corridor. When a report appears / is confirmed / expires,
   // silently re-score ALL routes and explain what changed (or that nothing relevant changed).
