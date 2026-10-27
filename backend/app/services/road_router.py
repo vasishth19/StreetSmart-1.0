@@ -223,7 +223,7 @@ def variants_for(spec: ModeSpec) -> List[tuple]:
     if spec.priority:
         return [("default", 2)]
     if spec.kind in ("foot", "wheel", "bike"):
-        return [("safest", 1), ("shortest", 0)]
+        return [("safest", 1), ("balanced", 1), ("shortest", 0)]
     return [("default", 2), ("shortest", 0)]
 
 
@@ -274,7 +274,7 @@ async def fetch_candidates(spec: ModeSpec, origin: Coordinates, dest: Coordinate
             raise RoutingError("; ".join(errors) or "no route found")
         if errors:
             logger.warning("routing partial failures: %s", errors)
-        return _dedupe(out)[:5]
+        return _dedupe(out, 0.85)[:5]
     finally:
         if own:
             await client.aclose()
