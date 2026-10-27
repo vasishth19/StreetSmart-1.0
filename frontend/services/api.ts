@@ -1,14 +1,14 @@
-import axios, { AxiosError } from 'axios';
+﻿import axios, { AxiosError } from 'axios';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 const apiClient = axios.create({
   baseURL:  API_BASE,
-  timeout:  8000,
+  timeout:  60000,
   headers:  { 'Content-Type': 'application/json' },
 });
 
-// ── Suppress ERR_CONNECTION_REFUSED noise in console ──────────────
+// â”€â”€ Suppress ERR_CONNECTION_REFUSED noise in console â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
@@ -29,7 +29,7 @@ apiClient.interceptors.response.use(
   }
 );
 
-// ─── Types ────────────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface Coordinates {
   lat: number;
@@ -175,7 +175,7 @@ export interface AnalyticsData {
   accessibility_trend: string;
 }
 
-// ─── Parking (SIH1515) types ─────────────────────────────────────
+// â”€â”€â”€ Parking (SIH1515) types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export type VehicleType = 'two_wheeler' | 'car' | 'suv' | 'commercial';
 export type SpotStatus = 'available' | 'occupied' | 'reserved' | 'disabled';
@@ -260,7 +260,7 @@ export interface ParkingAnalytics {
   demand_trend: string;
 }
 
-// ─── API Service ──────────────────────────────────────────────────
+// â”€â”€â”€ API Service â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const apiService = {
   async getRoutes(request: RouteRequest): Promise<RoutesResponse> {
@@ -323,7 +323,7 @@ export const apiService = {
     return res.data;
   },
 
-  // ── Parking (SIH1515) ─────────────────────────────────────────
+  // â”€â”€ Parking (SIH1515) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   async getParkingZones(): Promise<ParkingZone[]> {
     const res = await apiClient.get<ParkingZone[]>('/parking/zones');
